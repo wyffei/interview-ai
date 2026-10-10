@@ -1,5 +1,5 @@
 appId: com.electron.app
-productName: 截屏解题助手
+productName: 语音面试助手
 directories:
   buildResources: build
 files:
