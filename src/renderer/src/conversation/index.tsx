@@ -5,8 +5,8 @@ import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
 import { stopAudioCapture } from '@/lib/audio-capture'
 import { useModePage } from '@/lib/use-mode-page'
-import { AppHeader } from '@/coder/AppHeader'
-import { PrerequisitesChecker } from '@/coder/PrerequisitesChecker'
+import { AppHeader } from '@/components/AppHeader'
+import { PrerequisitesChecker } from './PrerequisitesChecker'
 import { TranscriptPanel } from './TranscriptPanel'
 import { HintPanel } from './HintPanel'
 import { ConversationStatusBar } from './ConversationStatusBar'
@@ -20,12 +20,12 @@ import { toggleHintMode, toggleListening } from './listening'
 export default function ConversationPage() {
   const transcriptHidden = useSettingsStore((state) => state.conversationTranscriptHidden)
 
-  useModePage('conversation')
+  useModePage()
   useConversationEvents()
 
   return (
     <div className="conversation-page flex h-screen flex-col">
-      <AppHeader mode="conversation" />
+      <AppHeader />
       <div className="flex min-h-0 flex-1 max-[560px]:flex-col">
         {!transcriptHidden && <TranscriptPanel />}
         <HintPanel />

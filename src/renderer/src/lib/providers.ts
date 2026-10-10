@@ -25,8 +25,6 @@ export interface Provider {
   publicModelList?: boolean
   /** Query string for `/models`, to leave out models that can't chat (embeddings, image generation…) */
   modelListQuery?: string
-  /** Where main looks up which models take images, when `/models` doesn't say */
-  visionCatalog?: 'siliconflow'
 }
 
 export const PROVIDERS: Provider[] = [
@@ -54,8 +52,7 @@ export const PROVIDERS: Provider[] = [
     hosts: ['siliconflow.cn', 'siliconflow.com'],
     naming: 'prefixed',
     defaultModel: 'Qwen/Qwen3-VL-32B-Instruct',
-    modelListQuery: 'sub_type=chat',
-    visionCatalog: 'siliconflow'
+    modelListQuery: 'sub_type=chat'
   },
   {
     // An empty API Base URL means the OpenAI SDK default, i.e. OpenAI itself
@@ -71,7 +68,7 @@ export const PROVIDERS: Provider[] = [
 /**
  * One row per model: its ID on each platform that serves it. The first ID of a
  * platform is the one offered and switched to; later ones are aliases that are
- * only recognised. Every entry must accept image input — the app sends screenshots.
+ * only recognised.
  */
 const MODEL_FAMILIES: Partial<Record<ProviderId, string[]>>[] = [
   {
@@ -127,14 +124,6 @@ function findFamily(model: string) {
   return [...MODEL_FAMILIES, ...RETIRED_MODEL_FAMILIES].find((f) =>
     Object.values(f).some((ids) => ids.some((id) => sameIdLoosely(id, model)))
   )
-}
-
-/**
- * Whether `model` takes images, as far as the preset table knows: every preset
- * does, anything else is unknown until the platform's model list says.
- */
-export function knownVision(model: string): true | undefined {
-  return model && findFamily(model) ? true : undefined
 }
 
 /** Whether `model` is exactly one of the platform's known IDs (aliases included) */
@@ -206,8 +195,6 @@ export function resolveLinkedModel({
 /** A model reported by the platform's `/models` endpoint */
 export interface PlatformModel {
   id: string
-  /** Accepts image input; unknown unless the platform (OpenRouter) or a vision catalog says */
-  vision?: boolean
 }
 
 /** Last path segment, lower-cased: `Qwen/Qwen3-VL-32B-Instruct` → `qwen3-vl-32b-instruct` */
@@ -241,19 +228,16 @@ export interface ModelDiagnosis {
 export function diagnoseModel(
   model: string,
   baseURL: string,
-  platformModels?: PlatformModel[],
-  /** 截图模式 uses this profile, so a model without image input is a problem */
-  requireVision = true
+  platformModels?: PlatformModel[]
 ): ModelDiagnosis | null {
-  const diagnosis = diagnose(model, baseURL, platformModels, requireVision)
+  const diagnosis = diagnose(model, baseURL, platformModels)
   return diagnosis && { ...diagnosis, message: cjkSpacing(diagnosis.message) }
 }
 
 function diagnose(
   model: string,
   baseURL: string,
-  platformModels: PlatformModel[] | undefined,
-  requireVision: boolean
+  platformModels: PlatformModel[] | undefined
 ): ModelDiagnosis | null {
   const provider = findProvider(baseURL)
   const platformName = provider?.name ?? '当前平台'
@@ -267,12 +251,7 @@ function diagnose(
       : { message: '还没有选择模型，请选择或输入该平台支持的模型名称' }
   }
 
-  const listed = platformModels?.find((m) => m.id === model)
-  if (listed) {
-    return listed.vision === false && requireVision
-      ? { message: '截图模式正在使用这个配置，但该模型不支持图片输入，无法识别截图' }
-      : null
-  }
+  if (platformModels?.some((m) => m.id === model)) return null
 
   if (provider && !isProviderModel(provider, model)) {
     const origins = spellingOrigins(model, provider)
@@ -296,11 +275,10 @@ function diagnose(
     if (!guess) {
       return { message: `${platformName}的模型列表里没有「${model}」，请确认名称是否正确` }
     }
-    const notFound = `${platformName}的模型列表里没有「${model}」，可能应写作${guess.id}`
-    // Offering a replacement that can't read screenshots would only trade one warning for another
-    return guess.vision === false && requireVision
-      ? { message: `${notFound}，但它不支持图片输入，无法识别截图` }
-      : { message: notFound, fix: { label: '替换', model: guess.id } }
+    return {
+      message: `${platformName}的模型列表里没有「${model}」，可能应写作${guess.id}`,
+      fix: { label: '替换', model: guess.id }
+    }
   }
 
   if (provider?.naming === 'prefixed' && !model.includes('/')) {

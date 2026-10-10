@@ -1,4 +1,4 @@
-import { findProvider, knownVision } from './providers'
+import { findProvider } from './providers'
 import type { ApiProfile } from '../../../shared/api-profile'
 
 export type { ApiProfile }
@@ -21,7 +21,6 @@ export function createProfile(partial?: Partial<ApiProfile>): ApiProfile {
     apiKey: partial?.apiKey ?? '',
     apiHeaders: partial?.apiHeaders ?? '',
     model,
-    disableThinking: partial?.disableThinking ?? false,
-    vision: partial?.vision ?? knownVision(model)
+    disableThinking: partial?.disableThinking ?? false
   }
 }

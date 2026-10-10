@@ -343,7 +343,7 @@ async function startHint(
   }
   publishHint(card)
 
-  if (!getModeProfile('conversation').apiKey) {
+  if (!getModeProfile().apiKey) {
     card.status = 'error'
     card.error = '对话模式使用的 AI 配置未填写 API Key，请到「设置 → AI 模型」填写'
     publishHint(card)
@@ -446,7 +446,7 @@ function getSnapshot(): ConversationSnapshot {
   return {
     utterances: utterances.map((u) => ({ ...u })),
     hints: hints.map((card) => ({ ...card })),
-    listening: isTranscriptionRunning('conversation')
+    listening: isTranscriptionRunning()
   }
 }
 

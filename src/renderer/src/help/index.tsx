@@ -4,7 +4,7 @@ import {
   ArrowLeft,
   Lightbulb,
   MessageCircle,
-  Camera,
+  MessagesSquare,
   PictureInPicture2,
   EyeOff,
   Info
@@ -12,8 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { platformAlt } from '@/lib/utils/env'
-import { useSettingsStore } from '@/lib/store/settings'
-import { MODE_PATHS } from '@/lib/use-mode-page'
+import { MODE_PATH } from '@/lib/use-mode-page'
 import { HelpSection } from './components'
 import { Shortcuts } from './Shortcuts'
 import { OverlayToolbarHelp } from './OverlayToolbar'
@@ -21,7 +20,6 @@ import { FAQ } from './FAQ'
 
 export default function HelpPage() {
   const [appVersion, setAppVersion] = useState('')
-  const lastMode = useSettingsStore((state) => state.lastMode)
 
   useEffect(() => {
     window.api.getAppVersion().then(setAppVersion)
@@ -33,7 +31,7 @@ export default function HelpPage() {
       <div id="app-header" className="flex items-center">
         <div className="actions">
           <Button variant="ghost" asChild size="icon" className="w-12 mr-2 rounded-none">
-            <Link to={MODE_PATHS[lastMode]}>
+            <Link to={MODE_PATH}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -46,8 +44,8 @@ export default function HelpPage() {
         {/* Introduction */}
         <HelpSection Icon={Info} title="简介" description={appVersion && `当前版本 v${appVersion}`}>
           <p className="text-gray-700">
-            欢迎使用截屏解题助手！无论是 编程面试 / 在线考试 还是其他解题场景，
-            该工具都可以帮助您快速截图，分析屏幕内容，并给出解答建议。 您可以访问本项目{' '}
+            欢迎使用对话提示助手！在语音面试中，它听取对方说的话，结合您的简历和复盘库，
+            实时给出回答要点。您可以访问上游项目{' '}
             <a
               href="https://github.com/ooboqoo/interview-coder-cn/wiki"
               target="_blank"
@@ -62,8 +60,8 @@ export default function HelpPage() {
             <h3 className="font-semibold mb-2">主要功能：</h3>
             <ul className="space-y-1 text-gray-700 list-disc list-inside">
               <li className="flex gap-2">
-                <Camera className="h-6 w-4" />
-                <span>通过快捷键快速截图，并生成解题建议。</span>
+                <MessagesSquare className="h-6 w-4" />
+                <span>听取对方说的话，对方说完一句就给出回答提示；复盘库里有现成回答时直接显示原文。</span>
               </li>
               <li className="flex gap-2">
                 <EyeOff className="h-6 w-4" />
@@ -74,7 +72,7 @@ export default function HelpPage() {
               <li className="flex items-start gap-2">
                 <PictureInPicture2 className="h-6 w-4" />
                 <span>
-                  工具窗口置顶半透明显示，您在做题时光标始终停留在做题区域，不会导致原页面失焦。
+                  工具窗口置顶半透明显示，不会抢走会议窗口的焦点。
                 </span>
               </li>
             </ul>
@@ -84,23 +82,23 @@ export default function HelpPage() {
         {/* Quick Start */}
         <HelpSection Icon={Lightbulb} title="快速开始">
           <div className="border border-gray-400 rounded-lg p-4">
-            <h3 className="font-semibold mb-2">1. 截取屏幕截图</h3>
+            <h3 className="font-semibold mb-2">1. 填好 AI 和语音的 Key</h3>
             <p className="text-sm text-gray-700">
-              当您需要分析某个问题时，按下快捷键{' '}
-              <ShortcutRenderer shortcut={`${platformAlt}+Enter`} className="text-xs mx-1" />
-              截取当前屏幕。截图会立即显示在应用中。
+              在「设置 → AI 模型」填写 AI 平台的 API Key，建议打开「关闭思考」；在「设置 → 语音」填写百炼平台
+              API Key，用来识别对方说话。
             </p>
           </div>
           <div className="border border-gray-400 rounded-lg p-4">
-            <h3 className="font-semibold mb-2">2. 查看结果</h3>
+            <h3 className="font-semibold mb-2">2. 导入简历和复盘库</h3>
             <p className="text-sm text-gray-700">
-              截图完成后，系统会根据当前选择的提示词场景自动分析内容，给出解题思路和答案。
+              在「设置 → 资料库」导入简历（整份发送）和复盘库（按题检索）。复盘库请用 Word
+              的标题样式标出每道题。
             </p>
           </div>
           <div className="border border-gray-400 rounded-lg p-4">
-            <h3 className="font-semibold mb-2">3. 语音面试用对话模式</h3>
+            <h3 className="font-semibold mb-2">3. 开始监听</h3>
             <p className="text-sm text-gray-700">
-              点窗口顶部的「对话」切换到对话模式，按
+              按
               <ShortcutRenderer shortcut={`${platformAlt}+T`} className="text-xs mx-1" />
               开始监听。对方说完一句话，右侧就会给出回答提示；按
               <ShortcutRenderer shortcut={`${platformAlt}+G`} className="text-xs mx-1" />

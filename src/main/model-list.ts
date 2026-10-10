@@ -4,22 +4,13 @@ import { DEFAULT_API_BASE_URL } from '../shared/api-profile'
 
 export interface PlatformModel {
   id: string
-  /**
-   * Accepts image input; only known when the platform reports modalities
-   * (OpenRouter does) or a vision catalog covers the model
-   */
-  vision?: boolean
 }
 
 export type ModelListResult = { models: PlatformModel[] } | { error: string }
 
-/** Extra sources that tell which models take images, for platforms whose `/models` doesn't */
-export type VisionCatalog = 'siliconflow'
-
 export interface ListModelsOptions {
   /** Query string for `/models` */
   query?: string
-  visionCatalog?: VisionCatalog
   /** The profile's custom request headers, as typed in settings */
   headers?: string
 }
@@ -32,11 +23,8 @@ export interface ListModelsOptions {
 async function listModels(
   baseURL: string,
   apiKey: string,
-  { query, visionCatalog, headers }: ListModelsOptions = {}
+  { query, headers }: ListModelsOptions = {}
 ): Promise<ModelListResult> {
-  // Started up front so it downloads alongside the model list
-  const visionFlags = visionCatalog ? VISION_CATALOGS[visionCatalog]() : undefined
-
   const base = (baseURL.trim() || DEFAULT_API_BASE_URL).replace(/\/+$/, '')
   const url = `${base}/models${query ? `?${query}` : ''}`
   let res: Response
@@ -59,77 +47,14 @@ async function listModels(
     const body = await res.json()
     const data: unknown[] = Array.isArray(body?.data) ? body.data : []
     models = data.flatMap((m) => {
-      const item = m as { id?: unknown; architecture?: { input_modalities?: unknown } }
-      if (typeof item?.id !== 'string') return []
-      const modalities = item.architecture?.input_modalities
-      return [
-        {
-          id: item.id,
-          vision: Array.isArray(modalities) ? modalities.includes('image') : undefined
-        }
-      ]
+      const item = m as { id?: unknown }
+      return typeof item?.id === 'string' ? [{ id: item.id }] : []
     })
   } catch {
     return { error: '接口返回的不是模型列表' }
   }
   if (models.length === 0) return { error: '接口没有返回任何模型' }
-
-  const flags = await visionFlags
-  if (flags) {
-    models = models.map((m) => ({ ...m, vision: m.vision ?? flags.get(m.id) }))
-  }
   return { models }
-}
-
-/**
- * SiliconFlow's `/models` doesn't say which models take images. The console's
- * `tags=VLM` filter runs on a `vlm` flag that, without logging in, only the
- * public model square carries — embedded in its server-rendered page, with no
- * JSON API behind it. That is undocumented, so any failure (fetch, layout
- * change) just leaves vision unknown and the list unfiltered.
- */
-const SILICONFLOW_MODEL_SQUARE = 'https://siliconflow.cn/models'
-let siliconflowVision: Promise<Map<string, boolean> | undefined> | undefined
-
-function fetchSiliconflowVision(): Promise<Map<string, boolean> | undefined> {
-  if (!siliconflowVision) {
-    siliconflowVision = fetch(SILICONFLOW_MODEL_SQUARE, { signal: AbortSignal.timeout(10_000) })
-      .then(async (res) => {
-        if (!res.ok) return undefined
-        const flags = parseSiliconflowVision(await res.text())
-        return flags.size > 0 ? flags : undefined
-      })
-      .catch(() => undefined)
-    // Keep a success for the session; let the next call retry a failure
-    siliconflowVision.then((flags) => {
-      if (!flags) siliconflowVision = undefined
-    })
-  }
-  return siliconflowVision
-}
-
-/** `modelName` → `vlm` from the Next.js flight data (`self.__next_f.push([1,"…"])`) */
-function parseSiliconflowVision(html: string): Map<string, boolean> {
-  const payload = [...html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)]
-    .map((m) => {
-      try {
-        return JSON.parse(m[1]) as string
-      } catch {
-        return ''
-      }
-    })
-    .join('')
-  const flags = new Map<string, boolean>()
-  for (const entry of payload.split('{"modelId":"').slice(1)) {
-    const name = /"modelName":"([^"]+)"/.exec(entry)?.[1]
-    const vlm = /"vlm":(true|false)/.exec(entry)?.[1]
-    if (name && vlm) flags.set(name, vlm === 'true')
-  }
-  return flags
-}
-
-const VISION_CATALOGS: Record<VisionCatalog, () => Promise<Map<string, boolean> | undefined>> = {
-  siliconflow: fetchSiliconflowVision
 }
 
 ipcMain.handle(

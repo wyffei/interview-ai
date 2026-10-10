@@ -29,7 +29,6 @@ export function usePlatformModels(baseURL: string, apiKey: string, headers: stri
   const provider = findProvider(url)
   const canFetch = !!key || !!provider?.publicModelList
   const query = provider?.modelListQuery
-  const visionCatalog = provider?.visionCatalog
 
   useEffect(() => {
     if (!canFetch) {
@@ -42,7 +41,7 @@ export function usePlatformModels(baseURL: string, apiKey: string, headers: stri
       let request = cache.get(cacheKey)
       if (!request) {
         request = window.api
-          .listModels(url, key, { query, visionCatalog, headers })
+          .listModels(url, key, { query, headers })
           .catch((): ModelListResult => ({ error: '获取模型列表失败' }))
         cache.set(cacheKey, request)
       }
@@ -67,7 +66,7 @@ export function usePlatformModels(baseURL: string, apiKey: string, headers: stri
       cancelled = true
       clearTimeout(timer)
     }
-  }, [cacheKey, canFetch, url, key, headers, query, visionCatalog, attempt])
+  }, [cacheKey, canFetch, url, key, headers, query, attempt])
 
   const reload = useCallback(() => {
     cache.delete(cacheKey)

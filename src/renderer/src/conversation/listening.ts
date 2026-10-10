@@ -6,8 +6,7 @@ import { startAudioCapture, stopAudioCapture } from '@/lib/audio-capture'
 
 /**
  * Listening to the other side: the audio is captured here and recognised in
- * main (`purpose: 'conversation'`), which turns each sentence into the
- * conversation. It keeps running while the settings or help page is open, so
+ * main, which turns each sentence into the conversation. It keeps running while the settings or help page is open, so
  * adjusting something mid-call does not drop what is being said.
  */
 export async function startListening(): Promise<void> {
@@ -20,7 +19,6 @@ export async function startListening(): Promise<void> {
   try {
     await startAudioCapture()
     await window.api.startTranscription(dashscopeApiKey, {
-      purpose: 'conversation',
       maxSentenceSilence: conversationSilenceMs
     })
     useTranscriptionStore.getState().setIsTranscribing(true)

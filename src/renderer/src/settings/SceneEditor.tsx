@@ -12,35 +12,18 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import {
-  useSettingsStore,
-  scenesOf,
-  hasRemovedPresets,
-  PRESET_SCENE_PROMPTS,
-  type AppMode
-} from '@/lib/store/settings'
+import { useSettingsStore, hasRemovedPresets, PRESET_SCENE_PROMPTS } from '@/lib/store/settings'
 
-const PLACEHOLDERS: Record<AppMode, { name: string; prompt: string }> = {
-  screenshot: {
-    name: '场景名称，如：数学考试',
-    prompt:
-      '请输入该场景的系统提示词, 示例: 你是一个解题助手, 请根据「截图」和「语音转录内容」给出相关回答。'
-  },
-  conversation: {
-    name: '场景名称，如：产品经理面试',
-    prompt:
-      '请输入该场景的系统提示词, 示例: 你是求职者的实时提词助手, 根据面试官刚说的话给出简短的回答要点。'
-  }
+const PLACEHOLDERS = {
+  name: '场景名称，如：产品经理面试',
+  prompt:
+    '请输入该场景的系统提示词, 示例: 你是求职者的实时提词助手, 根据面试官刚说的话给出简短的回答要点。'
 }
 
-/**
- * One mode's prompt scenes: pick, edit, add and delete. Each mode keeps its own
- * list and its own active scene, and the shortcut cycles only through these.
- */
-export function SceneEditor({ mode }: { mode: AppMode }) {
+/** The prompt scenes: pick, edit, add and delete; the shortcut cycles through them */
+export function SceneEditor() {
   const {
-    scenes: allScenes,
-    activeSceneId,
+    scenes,
     conversationSceneId,
     removedPresetSceneIds,
     setActiveScene,
@@ -53,17 +36,15 @@ export function SceneEditor({ mode }: { mode: AppMode }) {
   const [newSceneName, setNewSceneName] = useState('')
   const [sceneToDelete, setSceneToDelete] = useState<string | null>(null)
 
-  const scenes = scenesOf(allScenes, mode)
-  const activeId = mode === 'screenshot' ? activeSceneId : conversationSceneId
+  const activeId = conversationSceneId
   const activeScene = scenes.find((s) => s.id === activeId)
   const deletingScene = scenes.find((s) => s.id === sceneToDelete)
-  // Restoring brings back only this mode's deleted presets
-  const canRestore = hasRemovedPresets(removedPresetSceneIds, mode)
+  const canRestore = hasRemovedPresets(removedPresetSceneIds)
 
   const handleAddScene = () => {
     const name = newSceneName.trim()
     if (!name) return
-    addScene(name, mode)
+    addScene(name)
     setNewSceneName('')
     setAddSceneOpen(false)
   }
@@ -117,7 +98,7 @@ export function SceneEditor({ mode }: { mode: AppMode }) {
           {canRestore && (
             <button
               className="flex items-center gap-1 rounded-full border border-dashed border-gray-400 bg-transparent px-3 py-1 text-sm text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
-              onClick={() => restorePresetScenes(mode)}
+              onClick={() => restorePresetScenes()}
             >
               <RotateCcw className="h-3.5 w-3.5" />
               恢复预设场景
@@ -149,7 +130,7 @@ export function SceneEditor({ mode }: { mode: AppMode }) {
           <Textarea
             value={activeScene.prompt}
             onChange={(e) => updateScenePrompt(activeScene.id, e.target.value)}
-            placeholder={PLACEHOLDERS[mode].prompt}
+            placeholder={PLACEHOLDERS.prompt}
             className="w-full min-h-24 max-h-100 bg-white"
             rows={6}
           />
@@ -165,7 +146,7 @@ export function SceneEditor({ mode }: { mode: AppMode }) {
           <Input
             value={newSceneName}
             onChange={(e) => setNewSceneName(e.target.value)}
-            placeholder={PLACEHOLDERS[mode].name}
+            placeholder={PLACEHOLDERS.name}
             maxLength={20}
             autoFocus
             onKeyDown={(e) => {

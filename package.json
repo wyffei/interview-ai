@@ -1,7 +1,7 @@
 {
   "name": "interview-coder-cn",
   "version": "3.1.0",
-  "description": "截屏解题助手：面试和笔试的隐身 AI 助手，截图实时解题，听对话实时出提示",
+  "description": "语音面试 AI 助手：听对话实时出提示，复盘库按题检索",
   "main": "./out/main/index.js",
   "devEngines": {
     "packageManager": {

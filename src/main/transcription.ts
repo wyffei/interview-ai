@@ -8,22 +8,12 @@ let ws: WebSocket | null = null
 let taskId: string | null = null
 let isTranscribing = false
 let taskStarted = false
-let accumulatedText = ''
-let currentPartial = ''
 
-export type TranscriptionPurpose = 'screenshot' | 'conversation'
-
+/** Every sentence goes to conversation.ts, revision by revision */
 export interface TranscriptionOptions {
-  /**
-   * 截图模式 collects the text for the next screenshot; 对话模式 hands every
-   * sentence to conversation.ts instead, leaving 截图模式's text untouched
-   */
-  purpose?: TranscriptionPurpose
   /** Silence (ms) that ends a sentence; the recogniser's default (1300ms) when absent */
   maxSentenceSilence?: number
 }
-
-let purpose: TranscriptionPurpose = 'screenshot'
 
 type SentenceListener = (text: string, final: boolean) => void
 const sentenceListeners = new Set<SentenceListener>()
@@ -39,8 +29,8 @@ export function onTranscriptionEnd(listener: () => void): void {
   endListeners.add(listener)
 }
 
-export function isTranscriptionRunning(purposeWanted: TranscriptionPurpose): boolean {
-  return isTranscribing && purpose === purposeWanted
+export function isTranscriptionRunning(): boolean {
+  return isTranscribing
 }
 
 /** Tell the renderer and the listeners in main that recognition has stopped */
@@ -74,7 +64,6 @@ function startTranscription(apiKey: string, options: TranscriptionOptions = {}) 
 
   cleanup()
   isTranscribing = true
-  purpose = options.purpose ?? 'screenshot'
   taskId = randomUUID()
   const silence = options.maxSentenceSilence
 
@@ -123,24 +112,7 @@ function startTranscription(apiKey: string, options: TranscriptionOptions = {}) 
         const text: string = sentence.text || ''
         const sentenceEnd: boolean = sentence.sentence_end === true
 
-        if (purpose === 'conversation') {
-          sentenceListeners.forEach((listener) => listener(text, sentenceEnd))
-          return
-        }
-
-        if (sentenceEnd) {
-          if (text) {
-            accumulatedText += (accumulatedText ? '' : '') + text
-          }
-          currentPartial = ''
-        } else {
-          currentPartial = text
-        }
-
-        sendToRenderer('transcription-text', {
-          text: getTranscriptionText(),
-          isPartial: !sentenceEnd
-        })
+        sentenceListeners.forEach((listener) => listener(text, sentenceEnd))
         return
       }
 
@@ -206,15 +178,6 @@ function handleAudioChunk(chunk: ArrayBuffer) {
   ws.send(Buffer.from(chunk))
 }
 
-export function getTranscriptionText(): string {
-  return accumulatedText + currentPartial
-}
-
-export function clearTranscriptionText() {
-  accumulatedText = ''
-  currentPartial = ''
-}
-
 ipcMain.handle('start-transcription', (_event, apiKey: string, options?: TranscriptionOptions) => {
   startTranscription(apiKey, options)
 })
@@ -225,12 +188,4 @@ ipcMain.handle('stop-transcription', () => {
 
 ipcMain.on('transcription-audio-chunk', (_event, chunk: ArrayBuffer) => {
   handleAudioChunk(chunk)
-})
-
-ipcMain.handle('get-transcription-text', () => {
-  return getTranscriptionText()
-})
-
-ipcMain.handle('clear-transcription-text', () => {
-  clearTranscriptionText()
 })

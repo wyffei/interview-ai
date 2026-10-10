@@ -3,7 +3,7 @@ import { ipcMain } from 'electron'
 /**
  * Runs when the page on screen changes. Click-through is suspended while the
  * settings page is up (see `applyIgnoreMouse` in shortcuts.ts), and the
- * toolbar shows the buttons of the mode on screen, so both need to be told.
+ * toolbar is only shown on the conversation page, so both need to be told.
  */
 let onPageChange: (() => void) | null = null
 
@@ -26,8 +26,6 @@ ipcMain.handle('updateAppState', (_event, next: Partial<AppState>) => {
 ipcMain.handle('getAppState', () => state)
 
 export const state = {
-  /** 截图模式's page is on screen */
-  inCoderPage: false,
   /** 对话模式's page is on screen */
   inConversationPage: false,
   /**
@@ -41,7 +39,7 @@ export const state = {
 
 export type AppState = typeof state
 
-/** One of the two mode pages is on screen, where the shortcuts act */
+/** The conversation page is on screen, where the shortcuts act */
 export function inModePage(): boolean {
-  return state.inCoderPage || state.inConversationPage
+  return state.inConversationPage
 }

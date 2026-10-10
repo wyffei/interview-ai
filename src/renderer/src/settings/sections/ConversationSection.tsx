@@ -60,9 +60,9 @@ export function ConversationSection({
 
       <SettingsCard Icon={MessagesSquare} title="AI 与提示词">
         <div className="space-y-4">
-          <ModeProfileSelect mode="conversation" onEdit={onEditProfile} />
-          <SceneEditor mode="conversation" />
-          <KnowledgeField mode="conversation" onOpen={onOpenKnowledge} />
+          <ModeProfileSelect onEdit={onEditProfile} />
+          <SceneEditor />
+          <KnowledgeField onOpen={onOpenKnowledge} />
         </div>
       </SettingsCard>
 

@@ -53,6 +53,8 @@ function load(): KnowledgeDoc[] {
       for (const doc of saved) {
         // A text lost outside the app takes its entry with it
         if (!existsSync(textPath(doc.id))) continue
+        // Lists saved while 截图模式 existed may still name it
+        doc.modes = (doc.modes ?? []).filter((m) => m === 'conversation')
         texts.set(doc.id, readFileSync(textPath(doc.id), 'utf-8'))
         docs.push(doc)
       }
@@ -113,8 +115,7 @@ async function addDoc(
     name: tidyName(name, `资料${load().length + 1}`),
     ...(source ? { source: source.name, sourcePath: source.path } : {}),
     ...measure(text),
-    // Most material (a resume, prepared answers) helps in both modes
-    modes: ['screenshot', 'conversation'],
+    modes: ['conversation'],
     // A long 复盘库 sent whole would slow every hint down; searched, only what fits goes along
     use: text.length > KNOWLEDGE_SEARCH_SUGGESTED_CHARS ? 'search' : 'full',
     updatedAt: Date.now()
@@ -148,7 +149,7 @@ async function updateDoc(id: string, patch: KnowledgePatch): Promise<KnowledgeDo
   const doc = load().find((d) => d.id === id)
   if (!doc) return null
   if (patch.name !== undefined) doc.name = tidyName(patch.name, doc.name)
-  if (patch.modes) doc.modes = patch.modes.filter((m) => m === 'screenshot' || m === 'conversation')
+  if (patch.modes) doc.modes = patch.modes.filter((m) => m === 'conversation')
   if (patch.use === 'full' || patch.use === 'search') doc.use = patch.use
   if (patch.text !== undefined) {
     const text = normalizeText(patch.text)
@@ -237,7 +238,7 @@ function withStats(doc: KnowledgeDoc): KnowledgeDoc {
  * found」 from 「nothing to search」.
  */
 export function searchKnowledge(mode: AppMode, question: string): ReviewLookup | null {
-  if (mode !== 'conversation' || !question.trim()) return null
+  if (!question.trim()) return null
   const used = load().filter((doc) => doc.modes.includes(mode) && doc.use === 'search')
   if (used.length === 0) return null
   const key = used.map((doc) => `${doc.id}@${doc.updatedAt}`).join('|')

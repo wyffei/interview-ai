@@ -44,26 +44,6 @@
   scrollbar-color: var(--app-scrollbar-thumb) transparent;
 }
 
-.transcription-scroll {
-  overflow: auto;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-.transcription-scroll:hover {
-  scrollbar-color: var(--app-scrollbar-thumb) transparent;
-}
-.transcription-scroll::-webkit-scrollbar {
-  width: 4px;
-}
-.transcription-scroll::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 2px;
-}
-.transcription-scroll:hover::-webkit-scrollbar-thumb {
-  background: var(--app-scrollbar-thumb);
-}
-
 .overlay-toolbar {
   @apply flex h-11 items-center gap-0.5 rounded-md p-2;
   background: var(--app-panel-bg);

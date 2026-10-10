@@ -3,9 +3,6 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type { AppSettings } from '../main/settings'
 import type { AppState } from '../main/state'
 import type { ListModelsOptions, ModelListResult } from '../main/model-list'
-import type { DisplayOption } from '../main/take-screenshot'
-import type { RegionPickerData } from '../main/region-picker'
-import type { CaptureRegion, RegionRect } from '../shared/capture-region'
 import type { TranscriptionOptions } from '../main/transcription'
 import type { ConversationSnapshot, HintCard, Utterance } from '../shared/conversation'
 import type { KnowledgeDoc, KnowledgeImportResult, KnowledgePatch } from '../shared/knowledge'
@@ -54,8 +51,6 @@ const api = {
   // Trigger the small set of user-facing actions exposed by the overlay toolbar.
   triggerAction: (
     action:
-      | 'takeScreenshot'
-      | 'appendScreenshot'
       | 'stopSolutionStream'
       | 'ignoreOrEnableMouse'
       | 'increaseOpacity'
@@ -68,11 +63,9 @@ const api = {
       | 'moveMainWindowRight'
       | 'toggleTranscription'
       | 'clearTranscription'
-      | 'pickCaptureRegion'
       | 'cycleScene'
       | 'generateHint'
       | 'toggleHintMode'
-      | 'switchMode'
   ) => ipcRenderer.invoke('triggerAction', action),
   setToolbarVisible: (visible: boolean) => ipcRenderer.invoke('setToolbarVisible', visible),
   // Set click-through from the settings page; returns the state main ended up in
@@ -117,107 +110,12 @@ const api = {
     ipcRenderer.removeAllListeners('cycle-scene')
   },
 
-  // Shortcut or toolbar asked to show the other mode (截图 ↔ 对话)
-  onSwitchMode: (callback: () => void) => {
-    ipcRenderer.on('switch-mode', () => callback())
-  },
-  removeSwitchModeListener: () => {
-    ipcRenderer.removeAllListeners('switch-mode')
-  },
-
-  // A screenshot was refused because this profile's model takes no images
-  onVisionUnsupported: (callback: (profileId: string) => void) => {
-    ipcRenderer.on('vision-unsupported', (_event, profileId: string) => callback(profileId))
-  },
-  removeVisionUnsupportedListener: () => {
-    ipcRenderer.removeAllListeners('vision-unsupported')
-  },
-
   // The active model refused 「关闭思考」, so its requests now go without it
   onThinkingUnsupported: (callback: (model: string) => void) => {
     ipcRenderer.on('thinking-unsupported', (_event, model: string) => callback(model))
   },
   removeThinkingUnsupportedListener: () => {
     ipcRenderer.removeAllListeners('thinking-unsupported')
-  },
-
-  // How long the finished request took, in milliseconds (measured in main)
-  onSolutionDuration: (callback: (ms: number) => void) => {
-    ipcRenderer.on('solution-duration', (_event, ms: number) => callback(ms))
-  },
-  removeSolutionDurationListener: () => {
-    ipcRenderer.removeAllListeners('solution-duration')
-  },
-
-  // Listen for screenshot events
-  onScreenshotTaken: (callback: (screenshotData: string) => void) => {
-    ipcRenderer.on('screenshot-taken', (_event, screenshotData) => {
-      callback(screenshotData)
-    })
-  },
-  // Remove screenshot listener
-  removeScreenshotListener: () => {
-    ipcRenderer.removeAllListeners('screenshot-taken')
-  },
-
-  // Listen for solution chunks
-  onSolutionChunk: (callback: (chunk: string) => void) => {
-    ipcRenderer.on('solution-chunk', (_event, chunk) => {
-      callback(chunk)
-    })
-  },
-  // Remove solution chunk listener
-  removeSolutionChunkListener: () => {
-    ipcRenderer.removeAllListeners('solution-chunk')
-  },
-
-  // Thinking models reason before they answer; those chunks render on their own
-  onReasoningChunk: (callback: (chunk: string) => void) => {
-    ipcRenderer.on('reasoning-chunk', (_event, chunk) => {
-      callback(chunk)
-    })
-  },
-  removeReasoningChunkListener: () => {
-    ipcRenderer.removeAllListeners('reasoning-chunk')
-  },
-
-  // A later request (appended screenshot, follow-up) starts a new reasoning
-  // round, shown in its own block above its own answer
-  onReasoningRoundStart: (callback: () => void) => {
-    ipcRenderer.on('reasoning-round-start', callback)
-  },
-  removeReasoningRoundStartListener: () => {
-    ipcRenderer.removeAllListeners('reasoning-round-start')
-  },
-
-  // Stop solution stream
-  stopSolutionStream: () => ipcRenderer.invoke('stopSolutionStream'),
-
-  // Send follow-up question
-  sendFollowUpQuestion: (question: string) => ipcRenderer.invoke('sendFollowUpQuestion', question),
-
-  // Listen for solution completion
-  onSolutionComplete: (callback: () => void) => {
-    ipcRenderer.on('solution-complete', callback)
-  },
-  removeSolutionCompleteListener: () => {
-    ipcRenderer.removeAllListeners('solution-complete')
-  },
-
-  onSolutionStopped: (callback: () => void) => {
-    ipcRenderer.on('solution-stopped', callback)
-  },
-  removeSolutionStoppedListener: () => {
-    ipcRenderer.removeAllListeners('solution-stopped')
-  },
-
-  onSolutionError: (callback: (message: string) => void) => {
-    ipcRenderer.on('solution-error', (_event, message) => {
-      callback(message)
-    })
-  },
-  removeSolutionErrorListener: () => {
-    ipcRenderer.removeAllListeners('solution-error')
   },
 
   // Listen for scroll page up
@@ -229,16 +127,6 @@ const api = {
     ipcRenderer.removeAllListeners('scroll-page-up')
   },
 
-  // Listen for screenshots-updated (gallery + the untruncated conversation total)
-  onScreenshotsUpdated: (callback: (screenshots: string[], total: number) => void) => {
-    ipcRenderer.on('screenshots-updated', (_event, screenshots, total) => {
-      callback(screenshots, total)
-    })
-  },
-  removeScreenshotsUpdatedListener: () => {
-    ipcRenderer.removeAllListeners('screenshots-updated')
-  },
-
   // Listen for scroll page down
   onScrollPageDown: (callback: () => void) => {
     ipcRenderer.on('scroll-page-down', callback)
@@ -248,48 +136,6 @@ const api = {
     ipcRenderer.removeAllListeners('scroll-page-down')
   },
 
-  // AI loading events
-  onAiLoadingStart: (callback: () => void) => {
-    ipcRenderer.on('ai-loading-start', callback)
-  },
-  onAiLoadingEnd: (callback: () => void) => {
-    ipcRenderer.on('ai-loading-end', callback)
-  },
-  removeAiLoadingStartListener: () => {
-    ipcRenderer.removeAllListeners('ai-loading-start')
-  },
-  removeAiLoadingEndListener: () => {
-    ipcRenderer.removeAllListeners('ai-loading-end')
-  },
-
-  // Solution clear event (new session)
-  onSolutionClear: (callback: () => void) => {
-    ipcRenderer.on('solution-clear', callback)
-  },
-  removeSolutionClearListener: () => {
-    ipcRenderer.removeAllListeners('solution-clear')
-  },
-
-  // Connected screens, for picking which one to capture
-  getDisplays: () => ipcRenderer.invoke('getDisplays') as Promise<DisplayOption[]>,
-  // Cover every screen and let the user drag out the capture region; null if cancelled
-  pickCaptureRegion: () => ipcRenderer.invoke('pickCaptureRegion') as Promise<CaptureRegion | null>,
-  // Inside a picker window: its frozen screen, then report it painted, then the result
-  getRegionPickerData: () =>
-    ipcRenderer.invoke('getRegionPickerData') as Promise<RegionPickerData | null>,
-  regionPickerReady: () => ipcRenderer.send('region-picker-ready'),
-  finishRegionPicker: (rect: RegionRect | null) => ipcRenderer.send('finish-region-picker', rect),
-  // A new capture region was picked (from any entry point); the store persists it
-  onCaptureRegionPicked: (callback: (region: CaptureRegion) => void) => {
-    ipcRenderer.on('capture-region-picked', (_event, region: CaptureRegion) => callback(region))
-  },
-  removeCaptureRegionPickedListener: () => {
-    ipcRenderer.removeAllListeners('capture-region-picked')
-  },
-  // Select screenshot save directory
-  selectScreenshotDir: () => ipcRenderer.invoke('selectScreenshotDir') as Promise<string | null>,
-  // Select the directory the generated code is written to
-  selectCodeDir: () => ipcRenderer.invoke('selectCodeDir') as Promise<string | null>,
   // Select the directory 对话模式's conversations are saved to
   selectConversationDir: () =>
     ipcRenderer.invoke('selectConversationDir') as Promise<string | null>,
@@ -338,7 +184,7 @@ const api = {
     }
   },
 
-  // 资料库: main keeps the material on disk and puts it into each mode's system prompt
+  // 资料库: main keeps the material on disk, sends it with hints or searches it per question
   listKnowledge: () => ipcRenderer.invoke('knowledge:list') as Promise<KnowledgeDoc[]>,
   getKnowledgeText: (id: string) => ipcRenderer.invoke('knowledge:get-text', id) as Promise<string>,
   // Open a file dialog and import what was picked; null if cancelled
@@ -362,19 +208,12 @@ const api = {
   stopTranscription: () => ipcRenderer.invoke('stop-transcription'),
   sendTranscriptionAudioChunk: (chunk: ArrayBuffer) =>
     ipcRenderer.send('transcription-audio-chunk', chunk),
-  getTranscriptionText: () => ipcRenderer.invoke('get-transcription-text') as Promise<string>,
 
   onToggleTranscription: (callback: () => void) => {
     ipcRenderer.on('toggle-transcription', callback)
   },
   removeToggleTranscriptionListener: () => {
     ipcRenderer.removeAllListeners('toggle-transcription')
-  },
-  onTranscriptionText: (callback: (data: { text: string; isPartial: boolean }) => void) => {
-    ipcRenderer.on('transcription-text', (_event, data) => callback(data))
-  },
-  removeTranscriptionTextListener: () => {
-    ipcRenderer.removeAllListeners('transcription-text')
   },
   onTranscriptionError: (callback: (message: string) => void) => {
     ipcRenderer.on('transcription-error', (_event, message) => callback(message))
@@ -387,12 +226,6 @@ const api = {
   },
   removeTranscriptionStoppedListener: () => {
     ipcRenderer.removeAllListeners('transcription-stopped')
-  },
-  onTranscriptionCleared: (callback: () => void) => {
-    ipcRenderer.on('transcription-cleared', callback)
-  },
-  removeTranscriptionClearedListener: () => {
-    ipcRenderer.removeAllListeners('transcription-cleared')
   }
 }
 

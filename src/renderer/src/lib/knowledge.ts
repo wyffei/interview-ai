@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import type { AppMode } from '../../../shared/api-profile'
 import {
   KNOWLEDGE_CHAR_LIMIT,
   type KnowledgeDoc,
@@ -27,18 +26,18 @@ export function useKnowledgeDocs() {
   return [docs, setDocs] as const
 }
 
+/** Whether a doc is switched on (it lists the one mode there is) */
+export const isEnabled = (doc: KnowledgeDoc) => doc.modes.includes('conversation')
+
 /**
- * What a mode sends along with every request: the docs used in full. Searched
- * ones (`use: 'search'`) only send what fits each question, and only in 对话模式
+ * What every hint request carries: the enabled docs used in full. Searched
+ * ones (`use: 'search'`) only send what fits each question
  */
-export function knowledgeUsage(docs: KnowledgeDoc[], mode: AppMode) {
-  const used = docs.filter((doc) => doc.modes.includes(mode) && doc.use !== 'search')
+export function knowledgeUsage(docs: KnowledgeDoc[]) {
+  const used = docs.filter((doc) => isEnabled(doc) && doc.use !== 'search')
   const chars = used.reduce((sum, doc) => sum + doc.chars, 0)
   const tokens = used.reduce((sum, doc) => sum + doc.tokens, 0)
-  const searched =
-    mode === 'conversation'
-      ? docs.filter((doc) => doc.modes.includes(mode) && doc.use === 'search').length
-      : 0
+  const searched = docs.filter((doc) => isEnabled(doc) && doc.use === 'search').length
   return { count: used.length, chars, tokens, searched, over: chars > KNOWLEDGE_CHAR_LIMIT }
 }
 

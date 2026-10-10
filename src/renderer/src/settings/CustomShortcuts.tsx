@@ -62,11 +62,6 @@ export function CustomShortcuts() {
           <h3 className="text-sm text-gray-500">窗口管理</h3>
           <Shortcut label="隐藏/显示窗口" shortcut="hideOrShowMainWindow" />
           <Shortcut
-            label="切换模式"
-            description="在截图模式和对话模式之间切换"
-            shortcut="switchMode"
-          />
-          <Shortcut
             label="鼠标穿透"
             description="启用后窗口对鼠标穿透，可以点击窗口背后的内容"
             shortcut="ignoreOrEnableMouse"
@@ -83,29 +78,9 @@ export function CustomShortcuts() {
           />
         </div>
 
-        {/* Screenshot mode */}
+        {/* Hints */}
         <div className="space-y-2">
-          <h3 className="text-sm text-gray-500">截图模式</h3>
-          <Shortcut
-            label="截图"
-            description="截图并生成解题建议（会新开对话）"
-            shortcut="takeScreenshot"
-          />
-          <Shortcut
-            label="追加截图"
-            description="在当前对话中追加截图并生成解题建议，适用于长题目等场景"
-            shortcut="appendScreenshot"
-          />
-          <Shortcut
-            label="框选截图区域"
-            description="重新框选截图时只截的区域，Enter 确认、Esc 取消"
-            shortcut="pickCaptureRegion"
-          />
-        </div>
-
-        {/* Conversation mode */}
-        <div className="space-y-2">
-          <h3 className="text-sm text-gray-500">对话模式</h3>
+          <h3 className="text-sm text-gray-500">出提示</h3>
           <Shortcut
             label="出提示"
             description="立即出提示，不等对方说完；没有新内容时换个说法重出"
@@ -118,38 +93,38 @@ export function CustomShortcuts() {
           />
         </div>
 
-        {/* Both modes */}
+        {/* AI and listening */}
         <div className="space-y-2">
-          <h3 className="text-sm text-gray-500">两种模式通用（作用于当前模式）</h3>
+          <h3 className="text-sm text-gray-500">AI 与监听</h3>
           <Shortcut
             label="停止生成"
-            description="打断正在生成的解题建议或提示"
+            description="打断正在生成的提示"
             shortcut="stopSolutionStream"
           />
           <Shortcut
             label="上一个模型"
-            description="当前模式切换到上一个已保存的 AI 配置"
+            description="切换到上一个已保存的 AI 配置"
             shortcut="previousApiProfile"
           />
           <Shortcut
             label="下一个模型"
-            description="当前模式切换到下一个已保存的 AI 配置"
+            description="切换到下一个已保存的 AI 配置"
             shortcut="nextApiProfile"
           />
           <Shortcut
             label="切换提示词场景"
-            description="在当前模式的场景间依次切换；从下次提问开始生效，不清空当前对话"
+            description="在场景间依次切换；从下次出提示开始生效，不清空当前对话"
             shortcut="cycleScene"
           />
           <Shortcut
-            label="语音转录"
-            description="截图模式：开始/暂停转录；对话模式：开始/停止监听对方说话"
+            label="开始/停止监听"
+            description="开始或停止监听对方说话"
             shortcut="toggleTranscription"
             disabled={!dashscopeApiKey}
           />
           <Shortcut
-            label="清除转录"
-            description="截图模式：清除未提交的转录文本；对话模式：清空整段对话和提示"
+            label="清空对话"
+            description="清空整段对话和提示"
             shortcut="clearTranscription"
             disabled={!dashscopeApiKey}
           />

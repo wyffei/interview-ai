@@ -33,8 +33,7 @@ export interface KnowledgeDoc {
  * - `search`: 复盘库 / 题库 — cut into entries by heading and searched per
  *   question in 对话模式 (`src/shared/review-search.ts`): an entry that answers
  *   the very question is shown as is, without asking the model, and only the
- *   entries that fit go along with a hint. Not used by 截图模式, which has no
- *   question text to search with
+ *   entries that fit go along with a hint
  */
 export type KnowledgeUse = 'full' | 'search'
 

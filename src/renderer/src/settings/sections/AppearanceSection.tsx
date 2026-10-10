@@ -33,7 +33,7 @@ export function AppearanceSection() {
         <div className="space-y-4">
           <Field
             label="背景主题"
-            note="做题页面为白色背景时选「浅色」，工具会变为白底黑字，不再显眼"
+            note="会议窗口为白色背景时选「浅色」，工具会变为白底黑字，不再显眼"
           >
             <Select value={theme} onValueChange={(val) => updateSetting('theme', val as Theme)}>
               <SelectTrigger className="w-60 shrink-0 bg-white">

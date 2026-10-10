@@ -1,29 +1,17 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
-import { useSettingsStore, type AppMode } from './store/settings'
+import { useSettingsStore } from './store/settings'
 import { useAppStore } from './store/app'
 
-export const MODE_PATHS: Record<AppMode, string> = {
-  screenshot: '/',
-  conversation: '/conversation'
-}
-
-export const MODE_NAMES: Record<AppMode, string> = {
-  screenshot: '截图模式',
-  conversation: '对话模式'
-}
-
-export const otherMode = (mode: AppMode): AppMode =>
-  mode === 'screenshot' ? 'conversation' : 'screenshot'
+/** Where the conversation page lives; the settings and help pages lead back here */
+export const MODE_PATH = '/'
 
 /**
- * What both mode pages do alike: tell main which page is up, apply the window
- * opacity, and answer the shortcuts that act on "the current mode" — its AI
- * profile, its prompt scene, and switching to the other mode.
+ * What the conversation page does besides showing the conversation: tell main
+ * it is up, apply the window opacity, and answer the shortcuts that step its AI
+ * profile and its prompt scene.
  */
-export function useModePage(mode: AppMode): void {
-  const navigate = useNavigate()
+export function useModePage(): void {
   const opacity = useSettingsStore((state) => state.opacity)
   const syncAppState = useAppStore((state) => state.syncAppState)
 
@@ -34,18 +22,12 @@ export function useModePage(mode: AppMode): void {
     }
   }, [opacity])
 
-  // The next start opens where the user left off
   useEffect(() => {
-    useSettingsStore.getState().updateSetting('lastMode', mode)
-  }, [mode])
-
-  useEffect(() => {
-    const key = mode === 'screenshot' ? 'inCoderPage' : 'inConversationPage'
-    window.api.updateAppState({ [key]: true })
+    window.api.updateAppState({ inConversationPage: true })
     return () => {
-      window.api.updateAppState({ [key]: false })
+      window.api.updateAppState({ inConversationPage: false })
     }
-  }, [mode])
+  }, [])
 
   useEffect(() => {
     window.api.onSyncAppState((state) => syncAppState(state))
@@ -65,12 +47,12 @@ export function useModePage(mode: AppMode): void {
 
   useEffect(() => {
     window.api.onSwitchApiProfile((direction) => {
-      const profile = useSettingsStore.getState().cycleProfile(mode, direction)
+      const profile = useSettingsStore.getState().cycleProfile(direction)
       if (!profile) {
-        toast(mode === 'screenshot' ? '没有其他能识图的配置可以切换' : '只有一个配置，无法切换')
+        toast('只有一个配置，无法切换')
         return
       }
-      toast(`${MODE_NAMES[mode]}已切换到「${profile.name}」`, {
+      toast(`已切换到「${profile.name}」`, {
         description: `${profile.model || '未设置模型'}${profile.disableThinking ? ' · 关闭思考' : ''}`,
         duration: 3000
       })
@@ -78,22 +60,22 @@ export function useModePage(mode: AppMode): void {
     return () => {
       window.api.removeSwitchApiProfileListener()
     }
-  }, [mode])
+  }, [])
 
   useEffect(() => {
     window.api.onCycleScene(() => {
-      const name = useSettingsStore.getState().cycleScene(mode)
+      const name = useSettingsStore.getState().cycleScene()
       if (!name) return
-      // An answer already streaming keeps the prompt it started with
-      toast(`已切换到「${name}」`, { description: '下次提问生效', duration: 3000 })
+      // A hint already streaming keeps the prompt it started with
+      toast(`已切换到「${name}」`, { description: '下次出提示生效', duration: 3000 })
     })
     return () => {
       window.api.removeCycleSceneListener()
     }
-  }, [mode])
+  }, [])
 
   // Main already resent the request without the switch; this only explains why
-  // the answer may be slower than the setting promises
+  // the hint may be slower than the setting promises
   useEffect(() => {
     window.api.onThinkingUnsupported((model) => {
       toast('当前模型不支持关闭思考，已按默认方式请求', {
@@ -105,11 +87,4 @@ export function useModePage(mode: AppMode): void {
       window.api.removeThinkingUnsupportedListener()
     }
   }, [])
-
-  useEffect(() => {
-    window.api.onSwitchMode(() => navigate(MODE_PATHS[otherMode(mode)]))
-    return () => {
-      window.api.removeSwitchModeListener()
-    }
-  }, [mode, navigate])
 }

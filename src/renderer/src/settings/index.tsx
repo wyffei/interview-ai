@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router'
 import {
   ArrowLeft,
   Bot,
-  Camera,
   Keyboard,
   LibraryBig,
   MessagesSquare,
@@ -15,20 +14,19 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useAppStore } from '@/lib/store/app'
-import { MODE_PATHS } from '@/lib/use-mode-page'
+import { MODE_PATH } from '@/lib/use-mode-page'
 import { AiModelsSection } from './sections/AiModelsSection'
 import { VoiceSection } from './sections/VoiceSection'
 import { AppearanceSection } from './sections/AppearanceSection'
 import { ShortcutsSection } from './sections/ShortcutsSection'
-import { ScreenshotSection } from './sections/ScreenshotSection'
 import { ConversationSection } from './sections/ConversationSection'
 import { KnowledgeSection } from './sections/KnowledgeSection'
 
-type Tab = 'ai' | 'knowledge' | 'voice' | 'appearance' | 'shortcuts' | 'screenshot' | 'conversation'
+type Tab = 'ai' | 'knowledge' | 'voice' | 'appearance' | 'shortcuts' | 'conversation'
 
 /**
- * Grouped by what a setting affects: the shared ones first, then one group per
- * mode. The mode pages open their own group (`?tab=screenshot`).
+ * Grouped by what a setting affects: the general ones first, then hints. The
+ * conversation page opens its own group (`?tab=conversation`).
  */
 const NAV: { heading: string; items: { tab: Tab; label: string; Icon: LucideIcon }[] }[] = [
   {
@@ -42,11 +40,8 @@ const NAV: { heading: string; items: { tab: Tab; label: string; Icon: LucideIcon
     ]
   },
   {
-    heading: '模式',
-    items: [
-      { tab: 'screenshot', label: '截图模式', Icon: Camera },
-      { tab: 'conversation', label: '对话模式', Icon: MessagesSquare }
-    ]
+    heading: '对话',
+    items: [{ tab: 'conversation', label: '对话模式', Icon: MessagesSquare }]
   }
 ]
 
@@ -56,13 +51,12 @@ export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requested = searchParams.get('tab') as Tab | null
   const tab: Tab = requested && TABS.includes(requested) ? requested : 'ai'
-  const lastMode = useSettingsStore((state) => state.lastMode)
   const setActiveProfile = useSettingsStore((state) => state.setActiveProfile)
   const syncAppState = useAppStore((state) => state.syncAppState)
   const contentRef = useRef<HTMLDivElement>(null)
 
   const openTab = (next: Tab) => setSearchParams({ tab: next }, { replace: true })
-  // From a mode's profile picker: open that profile in the AI 模型 group
+  // From the profile picker: open that profile in the AI 模型 group
   const editProfile = (id: string) => {
     setActiveProfile(id)
     openTab('ai')
@@ -104,9 +98,6 @@ export default function SettingsPage() {
     voice: <VoiceSection />,
     appearance: <AppearanceSection />,
     shortcuts: <ShortcutsSection />,
-    screenshot: (
-      <ScreenshotSection onEditProfile={editProfile} onOpenKnowledge={() => openTab('knowledge')} />
-    ),
     conversation: (
       <ConversationSection
         onEditProfile={editProfile}
@@ -122,7 +113,7 @@ export default function SettingsPage() {
       <div id="app-header" className="flex items-center">
         <div className="actions">
           <Button variant="ghost" asChild size="icon" className="w-12 mr-2 rounded-none">
-            <Link to={MODE_PATHS[lastMode]}>
+            <Link to={MODE_PATH}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>

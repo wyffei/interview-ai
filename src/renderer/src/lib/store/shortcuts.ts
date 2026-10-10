@@ -36,19 +36,14 @@ function isPersistedShortcutsState(value: unknown): value is PersistedShortcutsS
 }
 
 /**
- * Categories: `Window Management`, `Screenshot` (截图模式 only), `Conversation`
- * (对话模式 only), `AI` (acts on whichever mode is on screen), `Navigation`,
- * `Window Movement`. The category comes from here even for stored bindings.
+ * Categories: `Window Management`, `Conversation` (hints), `AI` (profile, scene,
+ * listening), `Navigation`, `Window Movement`. The category comes from here
+ * even for stored bindings; stored actions that no longer exist are dropped.
  */
 const defaultShortcuts: Record<string, Omit<Shortcut, 'defaultKey'>> = {
   hideOrShowMainWindow: {
     action: 'hideOrShowMainWindow',
     key: `${platformAlt}+H`,
-    category: 'Window Management'
-  },
-  switchMode: {
-    action: 'switchMode',
-    key: `${platformAlt}+Shift+M`,
     category: 'Window Management'
   },
   ignoreOrEnableMouse: {
@@ -65,21 +60,6 @@ const defaultShortcuts: Record<string, Omit<Shortcut, 'defaultKey'>> = {
     action: 'decreaseOpacity',
     key: `${platformAlt}+Shift+Down`,
     category: 'Window Management'
-  },
-  takeScreenshot: {
-    action: 'takeScreenshot',
-    key: `${platformAlt}+Enter`,
-    category: 'Screenshot'
-  },
-  appendScreenshot: {
-    action: 'appendScreenshot',
-    key: `${platformAlt}+Shift+Enter`,
-    category: 'Screenshot'
-  },
-  pickCaptureRegion: {
-    action: 'pickCaptureRegion',
-    key: `${platformAlt}+Shift+R`,
-    category: 'Screenshot'
   },
   generateHint: {
     action: 'generateHint',

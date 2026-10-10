@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, useLocation } from 'react-router'
-import { Toaster, toast } from 'sonner'
-import CoderPage from '@/coder'
+import { Toaster } from 'sonner'
 import ConversationPage from '@/conversation'
 import SettingsPage from '@/settings'
 import HelpPage from '@/help'
-import { OverlayToolbar } from '@/coder/OverlayToolbar'
+import { OverlayToolbar } from '@/toolbar/OverlayToolbar'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { getCloneableFields } from '@/lib/utils'
 import { applyTheme } from '@/lib/theme'
 import { WindowResizeHandles } from '@/components/WindowResizeHandles'
-import { MODE_PATHS } from '@/lib/use-mode-page'
+import { MODE_PATH } from '@/lib/use-mode-page'
 
 export default function App() {
   const [initialized, setInitialized] = useState(false)
@@ -50,28 +49,6 @@ export default function App() {
     }
   }, [initialized, settingsStore])
 
-  // A region picked from the settings page, the toolbar or the shortcut: main
-  // applies it at once, the store persists it. Only the main window is told
-  useEffect(() => {
-    window.api.onCaptureRegionPicked((region) => {
-      useSettingsStore.getState().updateSetting('captureRegion', region)
-      toast('截图区域已更新，之后只截这块区域')
-    })
-    return () => window.api.removeCaptureRegionPickedListener()
-  }, [])
-
-  // A screenshot was refused for want of image input: remember that about the
-  // profile, so 截图模式 no longer offers it. Only an unknown flag is overwritten;
-  // the platform's own model list is the better witness
-  useEffect(() => {
-    window.api.onVisionUnsupported((profileId) => {
-      const store = useSettingsStore.getState()
-      const profile = store.apiProfiles.find((p) => p.id === profileId)
-      if (profile && profile.vision === undefined) store.updateProfile(profileId, { vision: false })
-    })
-    return () => window.api.removeVisionUnsupportedListener()
-  }, [])
-
   useEffect(() => {
     console.log('App initShortcuts:', shortcuts) // DEBUG: 检查新键
     window.api.initShortcuts(shortcuts)
@@ -87,8 +64,7 @@ export default function App() {
         <ToolbarVisibilityController />
         <WindowResizeController />
         <Routes>
-          <Route index element={<CoderPage />} />
-          <Route path="conversation" element={<ConversationPage />} />
+          <Route index element={<ConversationPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="help" element={<HelpPage />} />
           <Route path="toolbar" element={<OverlayToolbar />} />
@@ -116,8 +92,7 @@ function ToolbarVisibilityController() {
   useEffect(() => {
     // The toolbar window renders this app too, but must not drive its own visibility
     if (location.pathname === '/toolbar') return
-    const onModePage = Object.values(MODE_PATHS).includes(location.pathname)
-    void window.api.setToolbarVisible(onModePage && showOverlayToolbar)
+    void window.api.setToolbarVisible(location.pathname === MODE_PATH && showOverlayToolbar)
   }, [location.pathname, showOverlayToolbar])
 
   return null

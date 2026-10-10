@@ -20,8 +20,7 @@ export function OverlayToolbar() {
   const [hoverDelay, setHoverDelay] = useState(0)
   const barRef = useRef<HTMLDivElement>(null)
   const syncAppState = useAppStore((state) => state.syncAppState)
-  const inConversationPage = useAppStore((state) => state.inConversationPage)
-  const actions = TOOLBAR_ACTIONS[inConversationPage ? 'conversation' : 'screenshot']
+  const actions = TOOLBAR_ACTIONS
   const visibleCount = useVisibleActionCount(barRef, actions.length)
 
   // This window's store is its own copy, so the state main pushes has to be

@@ -15,7 +15,7 @@ export function AiModelsSection() {
   return (
     <SettingsCard Icon={Bot} title="AI 模型" extra={<ApiSaveStatus />}>
       <p className="-mt-2 mb-4 text-xs font-light">
-        在这里保存常用的 AI 配置；截图模式和对话模式各自选用其中一个，互不影响
+        在这里保存常用的 AI 配置；出提示时用其中一个，可在「对话模式」设置里或用快捷键切换
       </p>
       <ApiProfiles>
         <Field label="API Base URL" note="可选常用平台，也可输入其他 OpenAI 兼容地址">

@@ -10,7 +10,7 @@ import {
 import { useSettingsStore } from '@/lib/store/settings'
 import { Advanced, Field, SecretInput, SettingsCard } from '../components'
 
-/** Speech recognition, shared by both modes: 截图模式 attaches it, 对话模式 is built on it */
+/** Speech recognition, which hearing the other side is built on */
 export function VoiceSection() {
   const { dashscopeApiKey, audioInputDeviceId, audioOutputDeviceId, updateSetting } =
     useSettingsStore()
@@ -49,7 +49,7 @@ export function VoiceSection() {
               >
                 百炼平台
               </a>
-              获取；对话模式必填，截图模式不用语音转录可跳过
+              获取；必填，用来识别对方说话
             </>
           }
         >

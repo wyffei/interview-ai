@@ -1,18 +1,21 @@
 import { streamText, type ModelMessage, type TextStreamPart, type ToolSet } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { settings, getModeProfile } from './settings'
-import { DEFAULT_API_BASE_URL, type ApiProfile, type AppMode } from '../shared/api-profile'
+import { DEFAULT_API_BASE_URL, type ApiProfile } from '../shared/api-profile'
 import { buildRequestHeaders } from '../shared/request-headers'
 import { createThinkingOffFetch } from './thinking'
 import { getKnowledgePrompt } from './knowledge'
 import type { StreamChunk } from './stream'
 
-// The system prompts are fully managed by the renderer (prompt scenes in the
-// settings store, one active scene per mode) and synced here via
-// updateAppSettings on app startup. The mode's 资料库 material goes first
-function getSystemPrompt(mode: AppMode, extra?: string) {
-  const prompt = mode === 'screenshot' ? settings.customPrompt : settings.conversationPrompt
-  return [getKnowledgePrompt(mode), prompt, extra].filter(Boolean).join('\n\n') || undefined
+// The system prompt is fully managed by the renderer (prompt scenes in the
+// settings store) and synced here via updateAppSettings on app startup. The
+// 资料库 material sent in full goes first
+function getSystemPrompt() {
+  return (
+    [getKnowledgePrompt('conversation'), settings.conversationPrompt]
+      .filter(Boolean)
+      .join('\n\n') || undefined
+  )
 }
 
 /** Tell the user once that the active model ignores the profile's 「关闭思考」 */
@@ -60,18 +63,14 @@ async function* streamChunks(
   }
 }
 
-function streamWith(
-  mode: AppMode,
-  messages: ModelMessage[],
-  abortSignal: AbortSignal | undefined,
-  extraSystem?: string
-) {
-  const profile = getModeProfile(mode)
+/** A hint for what the other side just said, with the conversation profile */
+export function getHintStream(messages: ModelMessage[], abortSignal?: AbortSignal) {
+  const profile = getModeProfile()
   const openai = createProvider(profile)
 
   const { fullStream } = streamText({
     model: openai.chatModel(getModel(profile)),
-    system: getSystemPrompt(mode, extraSystem),
+    system: getSystemPrompt(),
     messages,
     abortSignal,
     onError: (err) => {
@@ -79,43 +78,4 @@ function streamWith(
     }
   })
   return streamChunks(fullStream)
-}
-
-export function getSolutionStream(messages: ModelMessage[], abortSignal?: AbortSignal) {
-  return streamWith('screenshot', messages, abortSignal)
-}
-
-export function getFollowUpStream(
-  messages: ModelMessage[],
-  userQuestion: string,
-  abortSignal?: AbortSignal
-) {
-  // Add the user's follow-up question to the conversation
-  const updatedMessages: ModelMessage[] = [
-    ...messages,
-    {
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text: userQuestion
-        }
-      ]
-    }
-  ]
-  return streamWith('screenshot', updatedMessages, abortSignal)
-}
-
-export function getGeneralStream(messages: ModelMessage[], abortSignal?: AbortSignal) {
-  return streamWith(
-    'screenshot',
-    messages,
-    abortSignal,
-    '注意：如果有多张截图，请结合所有截图内容进行完整分析，不要遗漏任何部分。'
-  )
-}
-
-/** 对话模式: a hint for what the other side just said, with the conversation profile */
-export function getHintStream(messages: ModelMessage[], abortSignal?: AbortSignal) {
-  return streamWith('conversation', messages, abortSignal)
 }

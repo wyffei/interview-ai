@@ -1,6 +1,5 @@
 import { app, dialog, ipcMain } from 'electron'
-import type { CaptureRegion } from '../shared/capture-region'
-import type { ApiProfile, AppMode } from '../shared/api-profile'
+import type { ApiProfile } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
 import { setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
 
@@ -60,8 +59,6 @@ async function pickDirectory(title: string): Promise<string | null> {
   return result.filePaths[0]
 }
 
-ipcMain.handle('selectScreenshotDir', () => pickDirectory('选择截图保存目录'))
-ipcMain.handle('selectCodeDir', () => pickDirectory('选择代码保存目录'))
 ipcMain.handle('selectConversationDir', () => pickDirectory('选择对话记录保存目录'))
 
 export const settings = {
@@ -78,13 +75,10 @@ export const settings = {
    * user's "off".
    */
   disableThinking: false,
-  /** Every saved AI profile, synced from the renderer; each mode picks one by id */
+  /** Every saved AI profile, synced from the renderer; hints go out with `conversationProfileId` */
   apiProfiles: [] as ApiProfile[],
-  screenshotProfileId: '',
   conversationProfileId: '',
-  /** 截图模式's system prompt, from the renderer's active scene */
-  customPrompt: '',
-  /** 对话模式's system prompt, from the renderer's active scene */
+  /** The system prompt, from the renderer's active scene */
   conversationPrompt: '',
   /** 对话模式: hint on every finished sentence (`auto`) or only on the shortcut */
   conversationHintMode: 'auto' as HintMode,
@@ -104,21 +98,6 @@ export const settings = {
    * renderer fields from here, so a truthy default would overwrite a user's "off".
    */
   toolbarHoverDelay: 0,
-  /** Screen to capture: `cursor` follows the mouse, anything else is a fixed `Display.id` */
-  captureScreen: 'cursor',
-  /** Crop every screenshot to this area of one screen; null captures the whole screen */
-  captureRegion: null as CaptureRegion | null,
-  screenshotAutoSave: false,
-  screenshotDir: '',
-  /** Save the code block of a finished answer as a source file */
-  codeAutoSave: false,
-  codeSaveDir: '',
-  /** Base file name for saved code; blank falls back to `Test` */
-  codeFileBaseName: 'Test',
-  /** `sequence` appends a number (Test1, Test2); `overwrite` reuses one name */
-  codeNamingMode: 'sequence' as 'sequence' | 'overwrite',
-  /** Copy the code block of a finished answer to the system clipboard */
-  codeCopyToClipboard: false,
   dashscopeApiKey: '',
   hideDockIcon: false,
   audioInputDeviceId: '',
@@ -128,12 +107,11 @@ export const settings = {
 export type AppSettings = typeof settings
 
 /**
- * The profile a mode sends its requests with. Until the renderer has synced
- * its list (or with only `.env` configured) the flat fields are all there is.
+ * The profile hints are requested with. Until the renderer has synced its list
+ * (or with only `.env` configured) the flat fields are all there is.
  */
-export function getModeProfile(mode: AppMode): ApiProfile {
-  const id = mode === 'screenshot' ? settings.screenshotProfileId : settings.conversationProfileId
-  const profile = settings.apiProfiles.find((p) => p.id === id)
+export function getModeProfile(): ApiProfile {
+  const profile = settings.apiProfiles.find((p) => p.id === settings.conversationProfileId)
   if (profile) return profile
   return {
     id: '',
