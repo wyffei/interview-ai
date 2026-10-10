@@ -8,10 +8,19 @@ import type { AppMode } from '../shared/api-profile'
 import {
   estimateTokens,
   KNOWLEDGE_EXTENSIONS,
+  KNOWLEDGE_SEARCH_SUGGESTED_CHARS,
   type KnowledgeDoc,
   type KnowledgeImportResult,
   type KnowledgePatch
 } from '../shared/knowledge'
+import {
+  buildReviewIndex,
+  lookupReview,
+  parseReviewDoc,
+  type ReviewEntry,
+  type ReviewIndex,
+  type ReviewLookup
+} from '../shared/review-search'
 
 /**
  * 资料库: reference material (resume, prepared Q&A, notes) put in front of a
@@ -106,6 +115,8 @@ async function addDoc(
     ...measure(text),
     // Most material (a resume, prepared answers) helps in both modes
     modes: ['screenshot', 'conversation'],
+    // A long 复盘库 sent whole would slow every hint down; searched, only what fits goes along
+    use: text.length > KNOWLEDGE_SEARCH_SUGGESTED_CHARS ? 'search' : 'full',
     updatedAt: Date.now()
   }
   texts.set(doc.id, text)
@@ -122,7 +133,7 @@ async function importFiles(paths: string[]): Promise<KnowledgeImportResult> {
     try {
       const text = await extractFileText(path)
       const name = basename(fileName, extname(fileName))
-      result.added.push(await addDoc(name, text, { name: fileName, path }))
+      result.added.push(withStats(await addDoc(name, text, { name: fileName, path })))
     } catch (error) {
       result.failed.push({
         name: fileName,
@@ -138,6 +149,7 @@ async function updateDoc(id: string, patch: KnowledgePatch): Promise<KnowledgeDo
   if (!doc) return null
   if (patch.name !== undefined) doc.name = tidyName(patch.name, doc.name)
   if (patch.modes) doc.modes = patch.modes.filter((m) => m === 'screenshot' || m === 'conversation')
+  if (patch.use === 'full' || patch.use === 'search') doc.use = patch.use
   if (patch.text !== undefined) {
     const text = normalizeText(patch.text)
     texts.set(id, text)
@@ -146,7 +158,7 @@ async function updateDoc(id: string, patch: KnowledgePatch): Promise<KnowledgeDo
   }
   doc.updatedAt = Date.now()
   await saveIndex()
-  return { ...doc }
+  return withStats(doc)
 }
 
 /** Read the file it came from again; keeps its name and modes */
@@ -167,6 +179,7 @@ async function removeDoc(id: string): Promise<void> {
   if (index < 0) return
   list.splice(index, 1)
   texts.delete(id)
+  parsed.delete(id)
   await saveIndex()
   await persist(() => unlink(textPath(id)).catch(() => {}))
 }
@@ -178,7 +191,9 @@ async function removeDoc(id: string): Promise<void> {
  * sit closer to the question.
  */
 export function getKnowledgePrompt(mode: AppMode): string {
-  const used = load().filter((doc) => doc.modes.includes(mode) && texts.get(doc.id))
+  const used = load().filter(
+    (doc) => doc.modes.includes(mode) && doc.use !== 'search' && texts.get(doc.id)
+  )
   if (used.length === 0) return ''
 
   const blocks = used.map(
@@ -198,7 +213,41 @@ export function getKnowledgePrompt(mode: AppMode): string {
   ].join('\n\n')
 }
 
-ipcMain.handle('knowledge:list', () => load().map((doc) => ({ ...doc })))
+/** Entries of each searched doc, by id, for the text they were cut from */
+const parsed = new Map<string, { updatedAt: number; entries: ReviewEntry[] }>()
+/** The index over every doc a mode searches, rebuilt when that set or a text changes */
+let searchIndex: { key: string; index: ReviewIndex } | null = null
+
+function entriesOf(doc: KnowledgeDoc): ReviewEntry[] {
+  const cached = parsed.get(doc.id)
+  if (cached?.updatedAt === doc.updatedAt) return cached.entries
+  const entries = parseReviewDoc(texts.get(doc.id) ?? '', doc.name)
+  parsed.set(doc.id, { updatedAt: doc.updatedAt, entries })
+  return entries
+}
+
+/** A copy to hand over IPC, with what main works out about it */
+function withStats(doc: KnowledgeDoc): KnowledgeDoc {
+  return doc.use === 'search' ? { ...doc, sections: entriesOf(doc).length } : { ...doc }
+}
+
+/**
+ * 复盘库 search for one question (对话模式): what the mode's searched docs
+ * have for it. Null when the mode searches none, so callers can tell 「nothing
+ * found」 from 「nothing to search」.
+ */
+export function searchKnowledge(mode: AppMode, question: string): ReviewLookup | null {
+  if (mode !== 'conversation' || !question.trim()) return null
+  const used = load().filter((doc) => doc.modes.includes(mode) && doc.use === 'search')
+  if (used.length === 0) return null
+  const key = used.map((doc) => `${doc.id}@${doc.updatedAt}`).join('|')
+  if (searchIndex?.key !== key) {
+    searchIndex = { key, index: buildReviewIndex(used.flatMap(entriesOf)) }
+  }
+  return lookupReview(searchIndex.index, question)
+}
+
+ipcMain.handle('knowledge:list', () => load().map(withStats))
 
 ipcMain.handle('knowledge:get-text', (_event, id: string) => {
   load()
@@ -219,7 +268,7 @@ ipcMain.handle('knowledge:import-files', (_event, paths: string[]) => importFile
 
 ipcMain.handle('knowledge:create', async (_event, name: string, text: string) => {
   const doc = await addDoc(name, normalizeText(text))
-  return { ...doc }
+  return withStats(doc)
 })
 
 ipcMain.handle('knowledge:update', (_event, id: string, patch: KnowledgePatch) =>

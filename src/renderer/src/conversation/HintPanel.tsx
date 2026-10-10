@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
-import { Brain, Eraser, LoaderCircle, PanelLeftOpen, X } from 'lucide-react'
+import { BookOpen, Brain, Eraser, LoaderCircle, PanelLeftOpen, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import MarkdownRenderer from '@/components/MarkdownRenderer'
@@ -9,7 +9,7 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
-import { NO_REPLY, type HintCard } from '../../../shared/conversation'
+import { NO_REPLY, type HintCard, type HintReview } from '../../../shared/conversation'
 import { startListening } from './listening'
 
 /** What one page of scrolling keeps of the previous page, so the eye finds its place */
@@ -189,6 +189,7 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
           {card.status === 'stopped' && ' · 已停止'}
         </span>
       </div>
+      {card.review && card.status !== 'waiting' && <ReviewBadge review={card.review} />}
       {card.status === 'waiting' ? (
         <p className="animate-pulse text-sm text-app-muted-fg">对方还在说，说完后重新生成…</p>
       ) : card.status === 'streaming' && !card.text ? (
@@ -213,6 +214,36 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
         <p className="text-sm break-words text-red-400">生成失败：{card.error}</p>
       )}
     </article>
+  )
+}
+
+/**
+ * Where a hint came from in the 复盘库: a prepared answer shown as is, one the
+ * model adapted, or only related material. No `title` tooltip: it would be
+ * drawn outside the window, where content protection does not reach
+ */
+function ReviewBadge({ review }: { review: HintReview }) {
+  if (review.tier === 'none' && review.related === 0) return null
+  const versions = review.versions ?? 1
+  const label =
+    review.tier === 'direct'
+      ? '复盘库原文'
+      : review.tier === 'adapt'
+        ? versions > 1
+          ? `按复盘库 ${versions} 个版本改写`
+          : '按复盘库改写'
+        : `参考复盘库 ${review.related} 条`
+  return (
+    <div className="mb-1 flex min-w-0 items-center gap-1 text-[11px] text-app-muted-fg select-none">
+      <BookOpen className="size-3 shrink-0" />
+      <span className={cn('shrink-0', review.tier === 'direct' && 'font-medium text-emerald-500')}>
+        {label}
+      </span>
+      {review.source && <span className="min-w-0 truncate">· {review.source}</span>}
+      {review.score !== undefined && (
+        <span className="shrink-0">· {Math.round(review.score * 100)}%</span>
+      )}
+    </div>
   )
 }
 

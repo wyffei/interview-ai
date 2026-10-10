@@ -1,6 +1,7 @@
 import { readFile, stat } from 'fs/promises'
 import { extname } from 'path'
 import { KNOWLEDGE_EXTENSIONS } from '../shared/knowledge'
+import { docxHtmlToMarkdown } from './docx-markdown'
 
 /**
  * Text out of an imported 资料库 file. The parsers are loaded on first use, so
@@ -58,11 +59,16 @@ async function readPdf(buffer: Buffer): Promise<string> {
   }
 }
 
+/**
+ * As Markdown rather than raw text: Word's heading styles become `#` lines,
+ * which the 复盘库 search cuts the material by (and which a model reads
+ * better too)
+ */
 async function readDocx(buffer: Buffer): Promise<string> {
   const { default: mammoth } = await import('mammoth')
   try {
-    const { value } = await mammoth.extractRawText({ buffer })
-    return value
+    const { value } = await mammoth.convertToHtml({ buffer })
+    return docxHtmlToMarkdown(value)
   } catch {
     throw new Error('Word 文件解析失败，文件可能已损坏或不是 .docx 格式')
   }

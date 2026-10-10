@@ -27,12 +27,19 @@ export function useKnowledgeDocs() {
   return [docs, setDocs] as const
 }
 
-/** What a mode sends along with every request */
+/**
+ * What a mode sends along with every request: the docs used in full. Searched
+ * ones (`use: 'search'`) only send what fits each question, and only in 对话模式
+ */
 export function knowledgeUsage(docs: KnowledgeDoc[], mode: AppMode) {
-  const used = docs.filter((doc) => doc.modes.includes(mode))
+  const used = docs.filter((doc) => doc.modes.includes(mode) && doc.use !== 'search')
   const chars = used.reduce((sum, doc) => sum + doc.chars, 0)
   const tokens = used.reduce((sum, doc) => sum + doc.tokens, 0)
-  return { count: used.length, chars, tokens, over: chars > KNOWLEDGE_CHAR_LIMIT }
+  const searched =
+    mode === 'conversation'
+      ? docs.filter((doc) => doc.modes.includes(mode) && doc.use === 'search').length
+      : 0
+  return { count: used.length, chars, tokens, searched, over: chars > KNOWLEDGE_CHAR_LIMIT }
 }
 
 /** 860 字 / 3,210 字 / 1.2 万字 */

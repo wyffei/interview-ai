@@ -36,6 +36,26 @@ export interface HintCard {
   error?: string
   /** From the request to the first chunk, in ms; absent until the first chunk */
   latencyMs?: number
+  /** What the 复盘库 search found for it; absent when the mode searches no material */
+  review?: HintReview
+}
+
+/**
+ * - `direct`: the card's text is a prepared answer to this very question, shown
+ *   as is without asking the model
+ * - `adapt`: the model rewrote prepared answers to a close question
+ * - `none`: nothing prepared; the model wrote it with the related material
+ */
+export interface HintReview {
+  tier: 'direct' | 'adapt' | 'none'
+  /** Where the prepared answer sits: 「百度 一面 › 复盘 › 末端误差3cm怎么保证？」 */
+  source?: string
+  /** Prepared versions sent to the model (`adapt`) */
+  versions?: number
+  /** How well its title fits the question, 0–1 */
+  score?: number
+  /** Other entries sent along */
+  related: number
 }
 
 export interface ConversationSnapshot {

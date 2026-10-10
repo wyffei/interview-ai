@@ -91,6 +91,13 @@ export function KnowledgeSection() {
     if (saved) replaceDoc(saved)
   }
 
+  const toggleUse = async (doc: KnowledgeDoc) => {
+    const use = doc.use === 'search' ? 'full' : 'search'
+    replaceDoc({ ...doc, use })
+    const saved = await window.api.updateKnowledge(doc.id, { use })
+    if (saved) replaceDoc(saved)
+  }
+
   const reimport = async (doc: KnowledgeDoc) => {
     const { doc: updated, error } = await window.api.reimportKnowledge(doc.id)
     if (updated) {
@@ -136,6 +143,10 @@ export function KnowledgeSection() {
           作答时会优先参考；每份资料可以分别选择用于截图模式、对话模式。资料只保存在本机，但会随每次请求一起发给该模式使用的
           AI 平台
         </p>
+        <p className="-mt-2 mb-4 text-xs font-light">
+          简历、JD 这类短资料选「整份发送」；复盘库、题库这类长资料选「按题检索」：对话模式里按对方的问题查找，
+          有现成回答就直接显示原文（不等 AI），否则只把相关的几条发给 AI 改写。Word 里请用「标题 1/2/3」样式标出每道题
+        </p>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Button
@@ -173,6 +184,7 @@ export function KnowledgeSection() {
                   key={doc.id}
                   doc={doc}
                   onToggleMode={(mode) => toggleMode(doc, mode)}
+                  onToggleUse={() => toggleUse(doc)}
                   onEdit={() => setEditing(doc)}
                   onReimport={() => reimport(doc)}
                   onDelete={() => setDeleting(doc)}
@@ -229,18 +241,25 @@ export function KnowledgeSection() {
 function DocRow({
   doc,
   onToggleMode,
+  onToggleUse,
   onEdit,
   onReimport,
   onDelete
 }: {
   doc: KnowledgeDoc
   onToggleMode: (mode: AppMode) => void
+  onToggleUse: () => void
   onEdit: () => void
   onReimport: () => void
   onDelete: () => void
 }) {
+  const search = doc.use === 'search'
   const meta = [doc.source && `来自 ${doc.source}`, formatChars(doc.chars)]
+  if (search) meta.push(`切成 ${doc.sections ?? 0} 条`)
   if (doc.modes.length === 0) meta.push('未启用')
+  else if (search && !doc.modes.includes('conversation')) meta.push('按题检索只用于对话模式')
+  // Plain text without headings (pasted, or a .docx imported before headings were kept)
+  const fewSections = search && (doc.sections ?? 0) < 3
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-gray-400/60 bg-white/40 px-3 py-2">
@@ -248,8 +267,30 @@ function DocRow({
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{doc.name}</div>
         <div className="truncate text-xs text-gray-600">{meta.filter(Boolean).join(' · ')}</div>
+        {fewSections && (
+          <div className="text-xs text-amber-800">
+            没识别出几道题：请在 Word 里用标题样式标出每道题后
+            {doc.sourcePath ? '重新导入' : '重新导入，或在文字里用 # 开头的行作标题'}
+          </div>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        <button
+          className={cn(
+            'rounded-md border px-2 py-0.5 text-xs transition-colors cursor-pointer',
+            search
+              ? 'bg-amber-600 border-amber-600 text-white'
+              : 'bg-white border-gray-300 text-gray-600 hover:border-amber-500'
+          )}
+          title={
+            search
+              ? '按题检索：对话模式里只发送和问题相关的条目；点击改为整份发送'
+              : '整份发送：每次请求都带上全文；点击改为按题检索（适合复盘库、题库）'
+          }
+          onClick={onToggleUse}
+        >
+          {search ? '按题检索' : '整份发送'}
+        </button>
         {MODES.map(({ mode, label }) => {
           const on = doc.modes.includes(mode)
           return (
@@ -318,14 +359,15 @@ function UsageMeter({ docs }: { docs: KnowledgeDoc[] }) {
 
   return (
     <div className="mt-4 space-y-2">
-      {usages.map(({ mode, count, chars, tokens, over }) => (
+      {usages.map(({ mode, count, chars, tokens, searched, over }) => (
         <div key={mode}>
           <div className="mb-1 flex justify-between gap-2 text-xs">
             <span>{MODE_NAMES[mode]}每次请求带上</span>
             <span className={over ? 'font-medium text-amber-800' : 'text-gray-600'}>
               {count > 0
                 ? `${count} 份 · ${formatChars(chars)}（${formatTokens(tokens)}）`
-                : '不带资料'}
+                : '不带整份资料'}
+              {searched > 0 && ` + ${searched} 份按题检索`}
               <span className="text-gray-500">
                 {' '}
                 / 建议不超过 {formatChars(KNOWLEDGE_CHAR_LIMIT)}
@@ -344,7 +386,7 @@ function UsageMeter({ docs }: { docs: KnowledgeDoc[] }) {
         <p className="flex items-start gap-1 text-xs text-amber-800">
           <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>
-            超过建议上限：每次请求都会带上全部资料，回答会变慢、费用更高，模型处理不了这么长时请求会失败。可以删掉资料里用不到的部分，或让部分资料不用于该模式
+            超过建议上限：每次请求都会带上全部资料，回答会变慢、费用更高，模型处理不了这么长时请求会失败。可以删掉资料里用不到的部分，把复盘库这类长资料改为「按题检索」，或让部分资料不用于该模式
           </span>
         </p>
       )}

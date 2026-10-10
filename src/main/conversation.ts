@@ -1,6 +1,7 @@
 import { app, ipcMain } from 'electron'
 import type { ModelMessage } from 'ai'
 import { getHintStream } from './ai'
+import { searchKnowledge } from './knowledge'
 import { settings, getModeProfile, onSettingsChanged } from './settings'
 import { saveConversation, saveConversationSync } from './save-conversation'
 import { consumeStream, extractErrorMessage } from './stream'
@@ -9,8 +10,10 @@ import {
   countMeaningfulChars,
   type ConversationSnapshot,
   type HintCard,
+  type HintReview,
   type Utterance
 } from '../shared/conversation'
+import { entryLabel, type ReviewEntry, type ReviewLookup } from '../shared/review-search'
 
 /**
  * 对话模式: what the other side of a call says, sentence by sentence, and the
@@ -26,11 +29,22 @@ import {
  * - by the shortcut or the button, in either mode: it covers everything not yet
  *   hinted, including a sentence still being spoken, or rewrites the last hint
  *   when nothing new was said.
+ *
+ * Before asking the model, the 资料库's searched docs (复盘库) are searched with
+ * what the hint is for: a prepared answer to that very question is shown at
+ * once instead, and otherwise only the entries that fit go along with the
+ * request (see `materialBlock`).
  */
 
 /** How much earlier conversation goes along as context, whichever runs out first */
 const CONTEXT_UTTERANCES = 20
 const CONTEXT_CHARS = 1500
+
+/** 复盘库 material sent with a hint: at most this much of one entry, and this much in all */
+const ENTRY_CHARS = 1500
+const MATERIAL_CHARS = 5000
+/** A prepared answer shown as is stops here: a card is read on a call, not studied */
+const DIRECT_CHARS = 3000
 
 /** How long changes gather before the record on disk is rewritten */
 const SAVE_DELAY = 1500
@@ -200,11 +214,71 @@ function createCard(fromId: number, toId: number): HintCard {
   return card
 }
 
+/** What the other side said in utterances `fromId`..`toId`, the question a hint is for */
+function focusText(fromId: number, toId: number): string {
+  return utterances
+    .filter((u) => u.id >= fromId && u.id <= toId)
+    .map((u) => u.text)
+    .join(' ')
+}
+
+function clip(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text
+}
+
+function reviewOf(lookup: ReviewLookup): HintReview {
+  const best = lookup.matches[0]
+  return {
+    tier: lookup.tier,
+    ...(best ? { source: entryLabel(best.entry), score: best.score } : {}),
+    ...(lookup.matches.length > 0 ? { versions: lookup.matches.length } : {}),
+    related: lookup.related.length
+  }
+}
+
 /**
- * The request for one hint: earlier sentences as context, then the ones the
- * hint is for. `previous` asks for a different take on an earlier hint.
+ * The 复盘库 entries found for a hint, for its request: prepared answers to the
+ * same or a close question first, then related material, within a budget
  */
-function buildMessages(fromId: number, toId: number, previous?: string): ModelMessage[] {
+function materialBlock(lookup: ReviewLookup): string {
+  const items: string[] = []
+  let budget = MATERIAL_CHARS
+  const add = (entry: ReviewEntry, prepared: boolean) => {
+    if (budget <= 0) return
+    const text = clip(entry.body, Math.min(ENTRY_CHARS, budget))
+    budget -= text.length
+    const source = entryLabel(entry).replaceAll('"', "'")
+    const kind = prepared ? ' 类型="准备过的回答"' : ''
+    items.push(`<条目 来源="${source}"${kind}>\n${text}\n</条目>`)
+  }
+  for (const match of lookup.matches) add(match.entry, true)
+  for (const entry of lookup.related) add(entry, false)
+  if (items.length === 0) return ''
+
+  const rule =
+    lookup.matches.length > 1
+      ? '标为「准备过的回答」的是用户为这类问题准备的几个版本，越靠前越新：以它们为主，保留其中的经历、数据和说法，按对方这次的问法调整，针对别家公司的说法换掉或去掉'
+      : lookup.matches.length === 1
+        ? '标为「准备过的回答」的是用户为相同或相近问题准备的回答：以它为主，保留其中的经历、数据和说法，按对方这次的问法调整'
+        : '复盘库里没有这道题的现成回答：可以参考相关条目，不要编造条目和简历里都没有的经历和数据；条目与问题无关时忽略'
+  return [
+    '【复盘库中的相关内容】',
+    `以下摘自用户自己准备的复盘库，按相关度排列。${rule}。输出格式仍按系统提示的要求，不要提及复盘库本身。`,
+    ...items
+  ].join('\n\n')
+}
+
+/**
+ * The request for one hint: 复盘库 material found for it, earlier sentences as
+ * context, then the ones the hint is for. `previous` asks for a different take
+ * on an earlier hint.
+ */
+function buildMessages(
+  fromId: number,
+  toId: number,
+  previous?: string,
+  lookup?: ReviewLookup | null
+): ModelMessage[] {
   const context: string[] = []
   let chars = 0
   const earlier = utterances.filter((u) => u.id < fromId && u.text.trim())
@@ -219,6 +293,8 @@ function buildMessages(fromId: number, toId: number, previous?: string): ModelMe
   const unfinished = focus.length > 0 && !focus[focus.length - 1].final
 
   const parts: string[] = []
+  const material = lookup ? materialBlock(lookup) : ''
+  if (material) parts.push(material)
   if (context.length > 0) parts.push(`【之前对方说过的话】\n${context.join('\n')}`)
   parts.push(
     `【对方刚才说的话】${unfinished ? '（还没说完）' : ''}\n${focus.map((u) => u.text).join('\n')}`
@@ -246,9 +322,25 @@ async function startHint(
     text: '',
     reasoning: '',
     error: undefined,
-    latencyMs: undefined
+    latencyMs: undefined,
+    review: undefined
   } satisfies Partial<HintCard>)
   hintedUpTo = Math.max(hintedUpTo, toId)
+
+  const generation = (generations.get(card.id) ?? 0) + 1
+  generations.set(card.id, generation)
+
+  const lookup = searchKnowledge('conversation', focusText(fromId, toId))
+  if (lookup) card.review = reviewOf(lookup)
+  // A prepared answer to this very question: shown as is, no model and no wait.
+  // Not for 「换一个角度」, which asks for something other than what is there
+  if (lookup?.tier === 'direct' && !previous) {
+    card.text = clip(lookup.matches[0].entry.body, DIRECT_CHARS)
+    card.status = 'done'
+    card.latencyMs = 0
+    publishHint(card)
+    return
+  }
   publishHint(card)
 
   if (!getModeProfile('conversation').apiKey) {
@@ -258,11 +350,9 @@ async function startHint(
     return
   }
 
-  const generation = (generations.get(card.id) ?? 0) + 1
-  generations.set(card.id, generation)
   const stream: HintStream = { controller: new AbortController(), startedAt: Date.now() }
   streams.set(card.id, stream)
-  const messages = buildMessages(fromId, toId, previous)
+  const messages = buildMessages(fromId, toId, previous, lookup)
   const outcome = await consumeStream(
     (signal) => getHintStream(messages, signal),
     stream.controller,

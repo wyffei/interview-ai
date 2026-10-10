@@ -17,10 +17,33 @@ export interface KnowledgeDoc {
   tokens: number
   /** Modes whose requests carry it; empty means it is kept but not sent */
   modes: AppMode[]
+  /** How it is used; absent means `full` (docs saved before it existed) */
+  use?: KnowledgeUse
+  /**
+   * For `search`: how many entries the 复盘库 search cut it into. Worked out
+   * by main whenever it hands a doc over, never saved
+   */
+  sections?: number
   updatedAt: number
 }
 
-export type KnowledgePatch = Partial<Pick<KnowledgeDoc, 'name' | 'modes'>> & { text?: string }
+/**
+ * - `full`: the whole text goes in front of every request of its modes (a
+ *   resume, a JD)
+ * - `search`: 复盘库 / 题库 — cut into entries by heading and searched per
+ *   question in 对话模式 (`src/shared/review-search.ts`): an entry that answers
+ *   the very question is shown as is, without asking the model, and only the
+ *   entries that fit go along with a hint. Not used by 截图模式, which has no
+ *   question text to search with
+ */
+export type KnowledgeUse = 'full' | 'search'
+
+/** Imports longer than this start as `search`: sent in full they would slow every request down */
+export const KNOWLEDGE_SEARCH_SUGGESTED_CHARS = 8000
+
+export type KnowledgePatch = Partial<Pick<KnowledgeDoc, 'name' | 'modes' | 'use'>> & {
+  text?: string
+}
 
 export interface KnowledgeImportResult {
   added: KnowledgeDoc[]

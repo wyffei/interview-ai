@@ -11,7 +11,7 @@ Key capabilities:
 - Multi-screenshot conversation continuity (append screenshots to existing context)
 - Follow-up questions within the same conversation
 - Real-time speech transcription (DashScope Fun-ASR) — transcribed text is attached to screenshots when sent to AI
-- 资料库: the user's own material (resume, prepared Q&A, notes; imported from PDF / Word / Markdown / TXT or pasted) goes in front of each mode's system prompt
+- 资料库: the user's own material (resume, prepared Q&A, notes; imported from PDF / Word / Markdown / TXT or pasted) goes in front of each mode's system prompt; long 复盘库 material is instead searched per question in 对话模式 (按题检索)
 - 对话模式 (conversation mode): a second page for voice interviews — the other side's sentences on the left, short AI hints on the right, no screenshots; hints come automatically when a sentence ends or on a shortcut
 - Configurable AI provider (OpenAI, SiliconFlow, OpenRouter, or any OpenAI-compatible API)
 
@@ -42,6 +42,7 @@ src/
 │   ├── ai.ts                # Vercel AI SDK integration, one streaming function per request kind, each with its mode's profile
 │   ├── knowledge.ts         # 资料库: material on disk under userData, IPC, the system prompt block per mode
 │   ├── knowledge-parse.ts   # Text out of an imported PDF (unpdf) / .docx (mammoth) / Markdown / TXT (UTF-8, UTF-16, GBK)
+│   ├── docx-markdown.ts     # mammoth's HTML → Markdown (headings as `#`, bold, lists, table rows); no imports
 │   ├── thinking.ts          # 「关闭思考」: per-platform request-body fields + retry without them when refused
 │   ├── model-list.ts        # `listModels` IPC: a platform's `/models` list (+ SiliconFlow vision flags scraped from its public model square)
 │   ├── settings.ts          # App settings object + IPC handlers
@@ -62,7 +63,8 @@ src/
 │   ├── request-headers.ts   # Parse the custom request headers text, merge it over the Bearer key
 │   ├── capture-region.ts    # CaptureRegion type + fractions → pixels, for main's crop and the picker's readout
 │   ├── api-profile.ts       # ApiProfile + AppMode types
-│   ├── knowledge.ts         # KnowledgeDoc type, the suggested per-mode limit, estimateTokens()
+│   ├── knowledge.ts         # KnowledgeDoc type (+ `use`: full / search), the suggested per-mode limit, estimateTokens()
+│   ├── review-search.ts     # 复盘库 search: material cut into entries by heading, title matching, BM25, direct / adapt / none tiers; no imports
 │   └── conversation.ts      # 对话模式 types (Utterance, HintCard, HintMode) + countMeaningfulChars()
 └── renderer/
     ├── index.html            # SPA entry
@@ -309,6 +311,7 @@ Both windows are created with `resizable: false` — toggling Electron's native 
 - The hint panel scrolls each new card to its top and does not follow the stream. The newest card keeps a panel's height of room under it (`last:min-h-full`), else a short one stops at the bottom edge showing one line. A finished card that runs past the bottom pages down once by itself (`revealRest()`), unless the user scrolled since: paging by hand is easy to spot on a call
 - Each request sends the recent sentences as context (20 sentences / 1500 chars) plus the ones the hint is for; earlier hints are not sent back, so requests stay small
 - The preset prompts ask for 「（无需回应）」 (`NO_REPLY`) when nothing needs an answer; the page dims those cards
+- 复盘库 lookup: before a hint is requested, `startHint()` searches the 资料库's searched docs (`searchKnowledge()` in `knowledge.ts`) with what the hint is for. `direct` (one entry's title fits the question, `DIRECT_SCORE`) puts that entry's text on the card at once and asks no model — not for 「换一个角度」, which wants the model's take. `adapt` (a close title, or several equally good ones such as a self-introduction per company) and `none` send the entries found inside the user message (`materialBlock()`, `MATERIAL_CHARS` in all), not the system prompt, so the cached prefix stays the same. The card's `review` records the tier and source for the badge
 - 「保存对话记录到本地」 (`conversationAutoSave`, off by default): `save-conversation.ts` writes the whole conversation as Markdown to `对话记录_<start time>.md` in `conversationSaveDir` (blank = Documents/InterviewCoder), rewritten 1.5s after a change. A clear starts a new file, a pending save is flushed on clear and (synchronously) on `will-quit`, and turning it on mid-conversation saves what is there through `onSettingsChanged()`. Failed / withdrawn / 「（无需回应）」 hints are left out
 
 ### 资料库 (Knowledge)
@@ -317,8 +320,10 @@ Material the user wants the AI to draw on — a resume, prepared Q&A, notes — 
 - Stored under `userData/knowledge/`: `index.json` for the list, `<id>.txt` per text, both cached in memory once read. Not in localStorage: a few documents would outgrow it, and settings are synced to main whole on every change
 - Only the extracted text is kept, and the user can edit it (a PDF's layout often needs it); `sourcePath` is remembered for 「重新导入」, which overwrites those edits
 - Each doc lists the modes it is sent with (`modes`, empty = kept but unused). `getKnowledgePrompt(mode)` wraps them in `<资料 name="…">` blocks with the rules for using them, and `getSystemPrompt()` in `ai.ts` puts that **before** the scene prompt: a prefix stable across requests and scene switches is what platforms cache, and the scene's format rules end up closer to the question
-- Everything is sent in full with every request. `KNOWLEDGE_CHAR_LIMIT` (30,000 chars per mode) only drives a warning in the settings page; a request that still overflows the model is explained by `extractErrorMessage()`
+- Each doc is used `full` (sent with every request; the default, and what docs saved before the field existed get) or `search` (按题检索: 复盘库, 题库). Imports over `KNOWLEDGE_SEARCH_SUGGESTED_CHARS` start as `search`. Searched docs are left out of `getKnowledgePrompt()`, cut into entries by `parseReviewDoc()` (cached per doc and `updatedAt`) and searched per question in 对话模式 only; 截图模式 has no question text to search with. `sections` (how many entries) is worked out whenever main hands a doc over (`withStats()`), never saved
+- Full docs are sent whole with every request. `KNOWLEDGE_CHAR_LIMIT` (30,000 chars per mode) only drives a warning in the settings page, counting full docs only; a request that still overflows the model is explained by `extractErrorMessage()`
 - Parsers (`unpdf`, `mammoth`) are loaded with `import()` on first use. PDF text is passed through NFKC for the Kangxi radical look-alikes (「⼩」 for 「小」) some fonts map to
+- A .docx is imported as Markdown (`mammoth.convertToHtml` → `docxHtmlToMarkdown()`), not raw text: Word's heading styles are what the 复盘库 search cuts by. Docs imported before keep their plain text until 「重新导入」; the settings row warns when a searched doc yields fewer than 3 entries
 - The settings section is also a drop zone (`webUtils.getPathForFile`, exposed as `getPathForFile`); while it is mounted, a file dropped elsewhere in the window is swallowed instead of replacing the app
 
 ### Stream Abort Pattern
