@@ -33,7 +33,7 @@
   color: var(--app-surface-fg);
 }
 
-/* 对话模式: one surface under the columns and the status bar; each column scrolls on its own */
+/* The conversation page: one surface under the columns and the status bar; each column scrolls on its own */
 .conversation-page {
   background: var(--app-surface-bg);
   color: var(--app-surface-fg);
@@ -57,7 +57,7 @@
 }
 
 .overlay-toolbar button {
-  @apply relative size-7 shrink-0 cursor-default overflow-hidden;
+  @apply relative h-7 shrink-0 cursor-default gap-1 overflow-hidden px-2 text-xs font-normal whitespace-nowrap select-none;
 }
 .overlay-toolbar button:hover {
   background: var(--app-hover-bg);

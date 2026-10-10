@@ -35,7 +35,7 @@ export function AppHeader() {
         className="flex min-w-0 items-baseline justify-center gap-1.5 px-2"
         style={{ flex: '1 8 auto', minWidth: 0 }}
       >
-        <span className="truncate">对话提示</span>
+        <span className="truncate">语音面试助手</span>
         {appVersion && <span className="shrink-0 text-[10px] opacity-60">v{appVersion}</span>}
       </div>
       {context && (
@@ -50,7 +50,7 @@ export function AppHeader() {
         <Button
           variant="ghost"
           className="size-8 cursor-pointer hover:opacity-50"
-          onClick={() => navigate('/settings?tab=conversation')}
+          onClick={() => navigate('/settings?tab=hints')}
         >
           <SettingsIcon />
         </Button>

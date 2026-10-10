@@ -89,31 +89,7 @@ function need() {
   if (!page) throw new Error('launch first')
 }
 
-/** 截图模式: the reasoning blocks and the end of the answer */
-const SOLUTION_STATE = () => {
-  const root = document.querySelector('#app-content')
-  if (!root) return { page: location.hash, noContent: true }
-  const blocks = [...root.querySelectorAll('button')]
-    .filter((b) => b.textContent.includes('思考过程'))
-    .map((b) => {
-      const box = b.nextElementSibling
-      return {
-        label: b.textContent.trim(),
-        open: !!box,
-        streaming: !!box && box.className.includes('justify-end'),
-        height: box ? Math.round(box.getBoundingClientRect().height) : 0,
-        tail: box ? box.textContent.slice(-80).replace(/\s+/g, ' ') : null
-      }
-    })
-  return {
-    loading: !!document.querySelector('.animate-spin'),
-    blocks,
-    textLen: root.innerText.length,
-    tail: root.innerText.slice(-160).replace(/\s+/g, ' ')
-  }
-}
-
-/** 对话模式: one entry per hint card */
+/** One entry per hint card */
 const HINT_STATE = () =>
   [...document.querySelectorAll('article')].map((card) => ({
     meta: card.firstElementChild?.innerText.replace(/\s+/g, ' '),
@@ -134,20 +110,6 @@ const clickText = (t) => {
   el.click()
   return 'OK'
 }
-
-const PROBLEM_HTML = `<html><body style="font:22px/1.6 -apple-system,sans-serif;padding:60px 80px;background:#fff;color:#111">
-<h1>1. 两数之和</h1>
-<p>给定一个整数数组 <code>nums</code> 和一个整数目标值 <code>target</code>，请你在该数组中找出
-<b>和为目标值</b> <code>target</code> 的那 <b>两个</b> 整数，并返回它们的数组下标。</p>
-<p>你可以假设每种输入只会对应一个答案，并且你不能使用两次相同的元素。</p>
-<h3>示例 1：</h3>
-<pre style="background:#f4f4f4;padding:16px">输入：nums = [2,7,11,15], target = 9
-输出：[0,1]
-解释：因为 nums[0] + nums[1] == 9 ，返回 [0, 1] 。</pre>
-<h3>提示：</h3>
-<ul><li>2 &lt;= nums.length &lt;= 10^4</li><li>-10^9 &lt;= nums[i] &lt;= 10^9</li><li>只会存在一个有效答案</li></ul>
-<p><b>进阶：</b>你可以想出一个时间复杂度小于 O(n^2) 的算法吗？</p>
-</body></html>`
 
 const COMMANDS = {
   ping: () => 'pong',
@@ -190,90 +152,14 @@ const COMMANDS = {
     return f
   },
 
-  /** Fill the screen under the cursor with a coding problem, so a screenshot captures it */
-  async problem() {
-    need()
-    return app.evaluate(({ BrowserWindow, screen }, html) => {
-      const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
-      const win = new BrowserWindow({ ...display.workArea, show: false, focusable: false })
-      win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-      win.once('ready-to-show', () => win.showInactive())
-      globalThis.__problemWin = win
-      return `problem window on display ${display.id}`
-    }, PROBLEM_HTML)
-  },
-
-  async closeproblem() {
-    need()
-    return app.evaluate(() => {
-      globalThis.__problemWin?.destroy()
-      return 'closed'
-    })
-  },
-
-  /** `action <name>`: a shortcut action, e.g. takeScreenshot / appendScreenshot / stopSolutionStream */
+  /** `action <name>`: a shortcut action, e.g. generateHint / toggleHintMode / stopSolutionStream */
   async action(name) {
     need()
     const ok = await page.evaluate((n) => window.api.triggerAction(n), name)
     return ok ? `triggered ${name}` : `refused ${name} (not in clickableActions in shortcuts.ts)`
   },
 
-  /** `followup <question>`: ask within the current 截图模式 conversation */
-  async followup(text) {
-    need()
-    page.evaluate((t) => window.api.sendFollowUpQuestion(t), text).catch(() => {})
-    return 'sent'
-  },
-
-  async state() {
-    need()
-    return JSON.stringify(await page.evaluate(SOLUTION_STATE), null, 1)
-  },
-
-  /**
-   * `watch [seconds]`: follow a 截图模式 answer until it settles - no spinner and
-   * no new text for 2.5s. A follow-up shows no spinner, so text growth is what
-   * counts. Screenshots every change in the reasoning blocks.
-   */
-  async watch(seconds) {
-    need()
-    const t0 = Date.now()
-    const until = t0 + Number(seconds || 120) * 1000
-    const out = []
-    let lastBlocks = ''
-    let lastLen = -1
-    let stableSince = Date.now()
-    while (Date.now() < until) {
-      const s = await page.evaluate(SOLUTION_STATE)
-      const t = ((Date.now() - t0) / 1000).toFixed(1)
-      const blocks = JSON.stringify(s.blocks.map((b) => [b.label, b.open, b.streaming, b.height]))
-      if (blocks !== lastBlocks) {
-        lastBlocks = blocks
-        // A later round's block is below the fold; bring the newest one into the shot
-        await page.evaluate(() => {
-          const heads = [...document.querySelectorAll('#app-content button')].filter((b) =>
-            b.textContent.includes('思考过程')
-          )
-          heads.at(-1)?.scrollIntoView({ block: 'start' })
-        })
-        const shot = path.join(SHOT_DIR, `watch-${Date.now()}.png`)
-        await page.screenshot({ path: shot })
-        out.push(`${t}s textLen=${s.textLen} blocks=${blocks} -> ${shot}`)
-      }
-      if (s.textLen !== lastLen || s.loading) {
-        lastLen = s.textLen
-        stableSince = Date.now()
-      } else if (Date.now() - stableSince > 2500 && Date.now() - t0 > 4000) {
-        out.push(`${t}s settled, textLen=${s.textLen}`)
-        return out.join('\n')
-      }
-      await sleep(250)
-    }
-    out.push('TIMEOUT - still changing')
-    return out.join('\n')
-  },
-
-  /** `goto <hash>`: e.g. #/conversation, #/settings?tab=voice, #/ */
+  /** `goto <hash>`: e.g. #/, #/settings?tab=voice */
   async goto(hash) {
     need()
     await page.evaluate((h) => (location.hash = h), hash)
@@ -281,7 +167,7 @@ const COMMANDS = {
     return page.evaluate(() => location.hash)
   },
 
-  /** Type the DashScope key (env DASHSCOPE_API_KEY, else .env) into 设置 → 语音, then open 对话模式 */
+  /** Type the DashScope key (env DASHSCOPE_API_KEY, else .env) into 设置 → 语音, then go back */
   async dashscope() {
     need()
     let key = process.env.DASHSCOPE_API_KEY
@@ -295,7 +181,7 @@ const COMMANDS = {
     await input.waitFor({ timeout: 10_000 })
     await input.fill(key)
     await sleep(500)
-    await page.evaluate(() => (location.hash = '#/conversation'))
+    await page.evaluate(() => (location.hash = '#/'))
     await page.waitForTimeout(1000)
     return `key set (${key.length} chars); at ${await page.evaluate(() => location.hash)}`
   },

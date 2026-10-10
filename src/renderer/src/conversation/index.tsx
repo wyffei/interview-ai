@@ -4,23 +4,22 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
 import { stopAudioCapture } from '@/lib/audio-capture'
-import { useModePage } from '@/lib/use-mode-page'
+import { useMainPage } from '@/lib/use-main-page'
 import { AppHeader } from '@/components/AppHeader'
 import { PrerequisitesChecker } from './PrerequisitesChecker'
 import { TranscriptPanel } from './TranscriptPanel'
 import { HintPanel } from './HintPanel'
-import { ConversationStatusBar } from './ConversationStatusBar'
 import { toggleHintMode, toggleListening } from './listening'
 
 /**
- * 对话模式: what the other side says on the left, the hints for it on the right.
+ * The main page: what the other side says on the left, the hints for it on the right.
  * The conversation itself lives in main (see main conversation.ts); this page
  * shows a copy of it.
  */
 export default function ConversationPage() {
   const transcriptHidden = useSettingsStore((state) => state.conversationTranscriptHidden)
 
-  useModePage()
+  useMainPage()
   useConversationEvents()
 
   return (
@@ -30,7 +29,6 @@ export default function ConversationPage() {
         {!transcriptHidden && <TranscriptPanel />}
         <HintPanel />
       </div>
-      <ConversationStatusBar />
       <PrerequisitesChecker />
     </div>
   )

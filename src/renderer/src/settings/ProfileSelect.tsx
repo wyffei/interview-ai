@@ -17,7 +17,7 @@ function describe(profile: ApiProfile): string {
 }
 
 /** Which saved profile hints are asked for with */
-export function ModeProfileSelect({
+export function ProfileSelect({
   onEdit
 }: {
   /** Open the profile in the AI 模型 group */

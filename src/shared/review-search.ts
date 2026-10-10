@@ -398,7 +398,17 @@ export interface ReviewLookup {
   related: ReviewEntry[]
 }
 
-export function lookupReview(index: ReviewIndex, question: string, relatedLimit = 4): ReviewLookup {
+/**
+ * `hint` is what the user typed about the interview (「问的是 SLAM 项目」): it
+ * steers the related material, but not the title match, where extra words
+ * would only blur how well a title fits the question itself
+ */
+export function lookupReview(
+  index: ReviewIndex,
+  question: string,
+  relatedLimit = 4,
+  hint = ''
+): ReviewLookup {
   const ties = matchTitles(index, question)
   const top = ties[0]
   let tier: ReviewTier = 'none'
@@ -406,7 +416,7 @@ export function lookupReview(index: ReviewIndex, question: string, relatedLimit 
   else if (top && top.score >= ADAPT_SCORE) tier = 'adapt'
   const matches = tier === 'none' ? [] : ties.slice(0, MAX_VERSIONS)
   const taken = new Set(matches.map((m) => m.entry))
-  const related = rankRelated(index, question, relatedLimit + taken.size)
+  const related = rankRelated(index, `${question} ${hint}`, relatedLimit + taken.size)
     .filter((e) => !taken.has(e))
     .slice(0, relatedLimit)
   return { tier, matches, related }

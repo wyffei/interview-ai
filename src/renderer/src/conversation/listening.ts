@@ -6,8 +6,9 @@ import { startAudioCapture, stopAudioCapture } from '@/lib/audio-capture'
 
 /**
  * Listening to the other side: the audio is captured here and recognised in
- * main, which turns each sentence into the conversation. It keeps running while the settings or help page is open, so
- * adjusting something mid-call does not drop what is being said.
+ * main, which turns each sentence into the conversation. It keeps running
+ * while the settings or help page is open, so adjusting something mid-call
+ * does not drop what is being said.
  */
 export async function startListening(): Promise<void> {
   const { dashscopeApiKey, conversationSilenceMs } = useSettingsStore.getState()

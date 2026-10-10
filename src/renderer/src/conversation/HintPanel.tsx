@@ -132,7 +132,50 @@ export function HintPanel() {
           ))
         )}
       </div>
+
+      <NoteInput />
     </section>
+  )
+}
+
+/**
+ * Keywords for the hints, such as a company name the recogniser keeps getting
+ * wrong. Every request from now on carries them; Enter also asks for a hint
+ * at once, the way the shortcut does. A bare number answers the latest hint's
+ * 「（可确认：……）」 instead (see main `submitNote`).
+ */
+function NoteInput() {
+  const note = useConversationStore((state) => state.note)
+  const setNote = useConversationStore((state) => state.setNote)
+
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 border-t border-app-border px-3 py-1.5">
+      <input
+        className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-app-muted-fg"
+        value={note}
+        placeholder="补充说明，如「字节」「问的是 SLAM 项目」，回车立即出提示"
+        maxLength={200}
+        onChange={(event) => setNote(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            void window.api.submitConversationNote().then((answered) => {
+              if (answered) useConversationStore.setState({ note: '' })
+            })
+          } else if (event.key === 'Escape') {
+            event.currentTarget.blur()
+          }
+        }}
+      />
+      {note && (
+        <button
+          className="shrink-0 text-app-muted-fg hover:text-current cursor-pointer"
+          aria-label="清除关键词"
+          onClick={() => setNote('')}
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -189,7 +232,9 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
           {card.status === 'stopped' && ' · 已停止'}
         </span>
       </div>
-      {card.review && card.status !== 'waiting' && <ReviewBadge review={card.review} />}
+      {card.review && card.status !== 'waiting' && card.status !== 'error' && !noReply && (
+        <ReviewBadge review={card.review} />
+      )}
       {card.status === 'waiting' ? (
         <p className="animate-pulse text-sm text-app-muted-fg">对方还在说，说完后重新生成…</p>
       ) : card.status === 'streaming' && !card.text ? (
@@ -219,20 +264,30 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
 
 /**
  * Where a hint came from in the 复盘库: a prepared answer shown as is, one the
- * model adapted, or only related material. No `title` tooltip: it would be
- * drawn outside the window, where content protection does not reach
+ * model adapted, or nothing prepared (「未准备」: the model wrote it, maybe from
+ * related material, and personal experience in it may be made up). No `title`
+ * tooltip: it would be drawn outside the window, where content protection does
+ * not reach
  */
 function ReviewBadge({ review }: { review: HintReview }) {
-  if (review.tier === 'none' && review.related === 0) return null
+  if (review.tier === 'none') {
+    return (
+      <div className="mb-1 flex min-w-0 items-center gap-1 text-[11px] text-app-muted-fg select-none">
+        <BookOpen className="size-3 shrink-0" />
+        <span className="shrink-0 font-medium text-amber-500">未准备</span>
+        <span className="min-w-0 truncate">
+          · {review.related > 0 ? `参考复盘库 ${review.related} 条` : 'AI 现场生成，注意核实经历'}
+        </span>
+      </div>
+    )
+  }
   const versions = review.versions ?? 1
   const label =
     review.tier === 'direct'
       ? '复盘库原文'
-      : review.tier === 'adapt'
-        ? versions > 1
-          ? `按复盘库 ${versions} 个版本改写`
-          : '按复盘库改写'
-        : `参考复盘库 ${review.related} 条`
+      : versions > 1
+        ? `按复盘库 ${versions} 个版本改写`
+        : '按复盘库改写'
   return (
     <div className="mb-1 flex min-w-0 items-center gap-1 text-[11px] text-app-muted-fg select-none">
       <BookOpen className="size-3 shrink-0" />
@@ -265,7 +320,7 @@ function EmptyState() {
   if (!dashscopeApiKey) {
     content = (
       <>
-        <p>对话模式靠语音识别听对方说话，需要先填写百炼平台 API Key</p>
+        <p>出提示要靠语音识别听对方说话，需要先填写百炼平台 API Key</p>
         <Button size="sm" variant="secondary" onClick={() => navigate('/settings?tab=voice')}>
           去设置
         </Button>

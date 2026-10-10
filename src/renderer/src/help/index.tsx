@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { platformAlt } from '@/lib/utils/env'
-import { MODE_PATH } from '@/lib/use-mode-page'
+import { HOME_PATH } from '@/lib/use-main-page'
 import { HelpSection } from './components'
 import { Shortcuts } from './Shortcuts'
 import { OverlayToolbarHelp } from './OverlayToolbar'
@@ -31,7 +31,7 @@ export default function HelpPage() {
       <div id="app-header" className="flex items-center">
         <div className="actions">
           <Button variant="ghost" asChild size="icon" className="w-12 mr-2 rounded-none">
-            <Link to={MODE_PATH}>
+            <Link to={HOME_PATH}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -44,7 +44,7 @@ export default function HelpPage() {
         {/* Introduction */}
         <HelpSection Icon={Info} title="简介" description={appVersion && `当前版本 v${appVersion}`}>
           <p className="text-gray-700">
-            欢迎使用对话提示助手！在语音面试中，它听取对方说的话，结合您的简历和复盘库，
+            欢迎使用语音面试助手！在语音面试中，它听取对方说的话，结合您的简历和复盘库，
             实时给出回答要点。您可以访问上游项目{' '}
             <a
               href="https://github.com/ooboqoo/interview-coder-cn/wiki"
@@ -61,7 +61,9 @@ export default function HelpPage() {
             <ul className="space-y-1 text-gray-700 list-disc list-inside">
               <li className="flex gap-2">
                 <MessagesSquare className="h-6 w-4" />
-                <span>听取对方说的话，对方说完一句就给出回答提示；复盘库里有现成回答时直接显示原文。</span>
+                <span>
+                  听取对方说的话，对方说完一句就给出回答提示；复盘库里有现成回答时直接显示原文。
+                </span>
               </li>
               <li className="flex gap-2">
                 <EyeOff className="h-6 w-4" />
@@ -71,9 +73,7 @@ export default function HelpPage() {
               </li>
               <li className="flex items-start gap-2">
                 <PictureInPicture2 className="h-6 w-4" />
-                <span>
-                  工具窗口置顶半透明显示，不会抢走会议窗口的焦点。
-                </span>
+                <span>工具窗口置顶半透明显示，不会抢走会议窗口的焦点。</span>
               </li>
             </ul>
           </div>
@@ -84,8 +84,8 @@ export default function HelpPage() {
           <div className="border border-gray-400 rounded-lg p-4">
             <h3 className="font-semibold mb-2">1. 填好 AI 和语音的 Key</h3>
             <p className="text-sm text-gray-700">
-              在「设置 → AI 模型」填写 AI 平台的 API Key，建议打开「关闭思考」；在「设置 → 语音」填写百炼平台
-              API Key，用来识别对方说话。
+              在「设置 → AI 模型」填写 AI 平台的 API Key，建议打开「关闭思考」；在「设置 →
+              语音」填写百炼平台 API Key，用来识别对方说话。
             </p>
           </div>
           <div className="border border-gray-400 rounded-lg p-4">

@@ -1,5 +1,5 @@
 /**
- * 对话模式 data, shared by main (which owns it) and the renderer (which shows it).
+ * The conversation and its hints, shared by main (which owns it) and the renderer (which shows it).
  */
 
 /** `auto` asks for a hint as soon as the other side finishes a sentence; `manual` waits for the shortcut */
@@ -36,7 +36,7 @@ export interface HintCard {
   error?: string
   /** From the request to the first chunk, in ms; absent until the first chunk */
   latencyMs?: number
-  /** What the 复盘库 search found for it; absent when the mode searches no material */
+  /** What the 复盘库 search found for it; absent when no material is searched */
   review?: HintReview
 }
 
@@ -63,6 +63,8 @@ export interface ConversationSnapshot {
   hints: HintCard[]
   /** Whether speech recognition is running for this conversation */
   listening: boolean
+  /** Keywords the user typed to go along with every hint (see main `setNote`) */
+  note: string
 }
 
 /** The preset prompts tell the model to answer this when nothing needs a reply */

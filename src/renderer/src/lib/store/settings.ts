@@ -6,23 +6,17 @@ import englishInterviewPrompt from './prompts/english-interview.md?raw'
 import { DEFAULT_THEME, type Theme } from '../theme'
 import { normalizeBaseURL, resolveLinkedModel, type ModelSwitchReason } from '../providers'
 import { createProfile, type ApiProfile } from '../api-profiles'
-import type { AppMode } from '../../../../shared/api-profile'
 import type { HintMode } from '../../../../shared/conversation'
 
 export type { Theme }
 export type { ApiProfile }
-export type { AppMode, HintMode }
+export type { HintMode }
 
 export interface PromptScene {
   id: string
   name: string
   prompt: string
   isPreset: boolean
-  /**
-   * `conversation` for every scene now. Scenes saved without it belonged to the
-   * removed 截图模式 and are dropped on load (see `assembleScenes`)
-   */
-  mode?: AppMode
 }
 
 /** The scene to fall back to when the active one is gone */
@@ -40,30 +34,26 @@ const createPresetScenes = (): PromptScene[] => [
     id: TECH_INTERVIEW_SCENE_ID,
     name: '技术面试',
     prompt: PRESET_SCENE_PROMPTS[TECH_INTERVIEW_SCENE_ID],
-    isPreset: true,
-    mode: 'conversation'
+    isPreset: true
   },
   {
     id: 'behavioral-interview',
     name: '行为面试',
     prompt: PRESET_SCENE_PROMPTS['behavioral-interview'],
-    isPreset: true,
-    mode: 'conversation'
+    isPreset: true
   },
   {
     id: 'english-interview',
     name: '英文面试',
     prompt: PRESET_SCENE_PROMPTS['english-interview'],
-    isPreset: true,
-    mode: 'conversation'
+    isPreset: true
   }
 ]
 
 /**
  * The scene list: the presets the user has not deleted, in their fixed order
  * and keeping edited prompts, then the user's own. A preset added in a later
- * version is not in `removed`, so it still reaches existing users. The user's
- * own scenes for the removed 截图模式 (saved without a mode) are left out.
+ * version is not in `removed`, so it still reaches existing users.
  */
 function assembleScenes(saved: PromptScene[], removed: string[]): PromptScene[] {
   return [
@@ -71,11 +61,10 @@ function assembleScenes(saved: PromptScene[], removed: string[]): PromptScene[] 
       .filter((p) => !removed.includes(p.id))
       .map((p) => {
         const kept = saved.find((s) => s.id === p.id)
-        // An emptied (or restored) preset gets its default prompt back. Its mode
-        // always comes from the table, never from the saved copy
-        return kept?.prompt.trim() ? { ...kept, mode: p.mode } : p
+        // An emptied (or restored) preset gets its default prompt back
+        return kept?.prompt.trim() ? kept : p
       }),
-    ...saved.filter((s) => !s.isPreset && s.mode === 'conversation')
+    ...saved.filter((s) => !s.isPreset)
   ]
 }
 
@@ -163,8 +152,6 @@ interface Settings {
   resizable: boolean
   /** Show the click-through overlay toolbar above the main window */
   showOverlayToolbar: boolean
-  /** 隐藏主页面底部的快捷键提醒文字 */
-  hideShortcutHints: boolean
   /** Dwell time in ms before hovering a toolbar button fires it; 0 disables hover triggering */
   toolbarHoverDelay: number
 
@@ -175,15 +162,15 @@ interface Settings {
   audioInputDeviceId: string
   audioOutputDeviceId: string
 
-  /** 对话模式: hint as soon as the other side finishes a sentence, or only on the shortcut */
+  /** Hint as soon as the other side finishes a sentence, or only on the shortcut */
   conversationHintMode: HintMode
-  /** 对话模式: silence (ms) after which the recogniser ends a sentence; shorter hints sooner */
+  /** Silence (ms) after which the recogniser ends a sentence; shorter hints sooner */
   conversationSilenceMs: number
-  /** 对话模式: a finished sentence shorter than this (punctuation aside) triggers no automatic hint */
+  /** A finished sentence shorter than this (punctuation aside) triggers no automatic hint */
   conversationMinChars: number
-  /** 对话模式: hide the transcript column to give the hints the whole window */
+  /** Hide the transcript column to give the hints the whole window */
   conversationTranscriptHidden: boolean
-  /** 对话模式: 把每段对话自动保存为 Markdown 文件 */
+  /** 把每段对话自动保存为 Markdown 文件 */
   conversationAutoSave: boolean
   /** 对话记录保存目录；为空时用 文档/InterviewCoder */
   conversationSaveDir: string
@@ -267,7 +254,6 @@ const defaultSettings: Settings = {
   opacity: 0.8,
   resizable: true,
   showOverlayToolbar: true,
-  hideShortcutHints: false,
   toolbarHoverDelay: 1000,
 
   dashscopeApiKey: '',
@@ -541,10 +527,7 @@ export const useSettingsStore = create<SettingsStore>()(
       addScene: (name) => {
         const id = `custom-${Date.now()}`
         set((state) => {
-          const scenes: PromptScene[] = [
-            ...state.scenes,
-            { id, name, prompt: '', isPreset: false, mode: 'conversation' }
-          ]
+          const scenes: PromptScene[] = [...state.scenes, { id, name, prompt: '', isPreset: false }]
           return { scenes, conversationSceneId: id, conversationPrompt: composePrompt(scenes, id) }
         })
         return id
@@ -590,8 +573,6 @@ export const useSettingsStore = create<SettingsStore>()(
       version: 8,
       migrate: (persisted, version) => {
         const state = persisted as Partial<Settings>
-        // Drop the legacy codeLanguage field (language now lives in the prompt text)
-        delete (state as Record<string, unknown>).codeLanguage
         if (version < 8) {
           // Hover-delay options are now 0.5s / 1s / 2s; snap the retired ones
           // so the Select still matches an item
@@ -602,10 +583,7 @@ export const useSettingsStore = create<SettingsStore>()(
         return state
       },
       merge: (persisted, current) => {
-        const saved = (persisted ?? {}) as Partial<Settings> & Record<string, unknown>
-        const state = { ...current, ...saved }
-        // Settings of the removed 截图模式 would otherwise ride along forever
-        for (const key of REMOVED_KEYS) delete (state as Record<string, unknown>)[key]
+        const state = { ...current, ...(persisted as Partial<Settings>) }
         // Rebuild the presets on every load, so ones added in a later version
         // show up for existing users; the ones the user deleted stay out
         const persistedScenes = Array.isArray(state.scenes) ? state.scenes : []
@@ -624,38 +602,15 @@ export const useSettingsStore = create<SettingsStore>()(
         }
         state.conversationPrompt = composePrompt(state.scenes, state.conversationSceneId)
         state.apiProfiles = reconcileApiProfiles(state)
-        // Before modes existed the profile being edited was the one in use; a
-        // store from before 对话模式 had its own carries only 截图模式's choice
+        // Until one is picked, hints use the profile being edited
         if (!state.apiProfiles.some((p) => p.id === state.conversationProfileId)) {
-          const legacy = saved.screenshotProfileId
-          state.conversationProfileId =
-            typeof legacy === 'string' && state.apiProfiles.some((p) => p.id === legacy)
-              ? legacy
-              : state.activeProfileId
+          state.conversationProfileId = state.activeProfileId
         }
         return state
       }
     }
   )
 )
-
-/** Keys of the removed 截图模式 that may still sit in a saved store */
-const REMOVED_KEYS = [
-  'screenshotProfileId',
-  'customPrompt',
-  'activeSceneId',
-  'screenshotDisplay',
-  'captureScreen',
-  'captureRegion',
-  'screenshotAutoSave',
-  'screenshotDir',
-  'codeAutoSave',
-  'codeSaveDir',
-  'codeFileBaseName',
-  'codeNamingMode',
-  'codeCopyToClipboard',
-  'lastMode'
-]
 
 /**
  * Keep the profile list and the live API fields consistent after a rehydrate.
@@ -666,15 +621,12 @@ const REMOVED_KEYS = [
  * an ordinary load (trust the stored list).
  */
 function reconcileApiProfiles(state: Settings): ApiProfile[] {
-  // Profiles saved before custom headers or the thinking switch existed carry
-  // neither; ones saved with 截图模式's image flag drop it
-  const profiles = (Array.isArray(state.apiProfiles) ? state.apiProfiles : []).map(
-    ({ vision: _vision, ...p }: ApiProfile & { vision?: boolean }) => ({
-      ...p,
-      apiHeaders: p.apiHeaders ?? '',
-      disableThinking: p.disableThinking ?? false
-    })
-  )
+  // Profiles saved before custom headers or the thinking switch existed carry neither
+  const profiles = (Array.isArray(state.apiProfiles) ? state.apiProfiles : []).map((p) => ({
+    ...p,
+    apiHeaders: p.apiHeaders ?? '',
+    disableThinking: p.disableThinking ?? false
+  }))
   const active = profiles.find((p) => p.id === state.activeProfileId)
 
   if (profiles.length === 0) {

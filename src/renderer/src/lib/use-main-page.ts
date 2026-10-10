@@ -4,14 +4,14 @@ import { useSettingsStore } from './store/settings'
 import { useAppStore } from './store/app'
 
 /** Where the conversation page lives; the settings and help pages lead back here */
-export const MODE_PATH = '/'
+export const HOME_PATH = '/'
 
 /**
  * What the conversation page does besides showing the conversation: tell main
  * it is up, apply the window opacity, and answer the shortcuts that step its AI
  * profile and its prompt scene.
  */
-export function useModePage(): void {
+export function useMainPage(): void {
   const opacity = useSettingsStore((state) => state.opacity)
   const syncAppState = useAppStore((state) => state.syncAppState)
 

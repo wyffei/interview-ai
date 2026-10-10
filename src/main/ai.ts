@@ -1,6 +1,6 @@
 import { streamText, type ModelMessage, type TextStreamPart, type ToolSet } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { settings, getModeProfile } from './settings'
+import { settings, getHintProfile } from './settings'
 import { DEFAULT_API_BASE_URL, type ApiProfile } from '../shared/api-profile'
 import { buildRequestHeaders } from '../shared/request-headers'
 import { createThinkingOffFetch } from './thinking'
@@ -12,9 +12,7 @@ import type { StreamChunk } from './stream'
 // 资料库 material sent in full goes first
 function getSystemPrompt() {
   return (
-    [getKnowledgePrompt('conversation'), settings.conversationPrompt]
-      .filter(Boolean)
-      .join('\n\n') || undefined
+    [getKnowledgePrompt(), settings.conversationPrompt].filter(Boolean).join('\n\n') || undefined
   )
 }
 
@@ -65,7 +63,7 @@ async function* streamChunks(
 
 /** A hint for what the other side just said, with the conversation profile */
 export function getHintStream(messages: ModelMessage[], abortSignal?: AbortSignal) {
-  const profile = getModeProfile()
+  const profile = getHintProfile()
   const openai = createProvider(profile)
 
   const { fullStream } = streamText({

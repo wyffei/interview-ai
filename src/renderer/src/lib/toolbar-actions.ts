@@ -1,8 +1,4 @@
 import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
   ChevronDown,
   ChevronUp,
   CircleStop,
@@ -23,20 +19,19 @@ export type ToolbarAction = {
   /** Also the shortcut action name, so the same key binding can be shown in help */
   action: ToolbarActionName
   Icon: LucideIcon
+  /** Shown beside the icon on the toolbar */
+  text: string
+  /** The longer description on the help page */
   label: string
 }
 
 /** Window controls, after the hint buttons */
 const WINDOW_ACTIONS: ToolbarAction[] = [
-  { action: 'ignoreOrEnableMouse', Icon: MousePointer2, label: '切换鼠标穿透' },
-  { action: 'pageUp', Icon: ChevronUp, label: '向上翻页' },
-  { action: 'pageDown', Icon: ChevronDown, label: '向下翻页' },
-  { action: 'moveMainWindowUp', Icon: ArrowUp, label: '向上移动窗口' },
-  { action: 'moveMainWindowLeft', Icon: ArrowLeft, label: '向左移动窗口' },
-  { action: 'moveMainWindowDown', Icon: ArrowDown, label: '向下移动窗口' },
-  { action: 'moveMainWindowRight', Icon: ArrowRight, label: '向右移动窗口' },
-  { action: 'increaseOpacity', Icon: Sun, label: '提高不透明度（更清晰）' },
-  { action: 'decreaseOpacity', Icon: SunDim, label: '提高透明度（更透明）' }
+  { action: 'ignoreOrEnableMouse', Icon: MousePointer2, text: '鼠标穿透', label: '切换鼠标穿透' },
+  { action: 'pageUp', Icon: ChevronUp, text: '上翻', label: '向上翻页' },
+  { action: 'pageDown', Icon: ChevronDown, text: '下翻', label: '向下翻页' },
+  { action: 'increaseOpacity', Icon: Sun, text: '更清晰', label: '提高不透明度（更清晰）' },
+  { action: 'decreaseOpacity', Icon: SunDim, text: '更透明', label: '提高透明度（更透明）' }
 ]
 
 /**
@@ -47,10 +42,15 @@ const WINDOW_ACTIONS: ToolbarAction[] = [
  * a hover-triggered button must not be able to wipe the conversation.
  */
 export const TOOLBAR_ACTIONS: ToolbarAction[] = [
-  { action: 'generateHint', Icon: Lightbulb, label: '立即出提示（没有新内容时换个说法重出）' },
-  { action: 'toggleHintMode', Icon: Zap, label: '切换自动/手动出提示' },
-  { action: 'stopSolutionStream', Icon: CircleStop, label: '停止生成提示' },
-  { action: 'toggleTranscription', Icon: Mic, label: '开始/停止监听对方说话' },
+  {
+    action: 'generateHint',
+    Icon: Lightbulb,
+    text: '出提示',
+    label: '立即出提示（没有新内容时换个说法重出）'
+  },
+  { action: 'toggleHintMode', Icon: Zap, text: '自动/手动', label: '切换自动/手动出提示' },
+  { action: 'stopSolutionStream', Icon: CircleStop, text: '停止', label: '停止生成提示' },
+  { action: 'toggleTranscription', Icon: Mic, text: '开始监听', label: '开始/停止监听对方说话' },
   ...WINDOW_ACTIONS,
-  { action: 'cycleScene', Icon: Layers, label: '切换到下一个提示词场景' }
+  { action: 'cycleScene', Icon: Layers, text: '切换场景', label: '切换到下一个提示词场景' }
 ]

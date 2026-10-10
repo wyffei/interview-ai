@@ -8,14 +8,14 @@ import { ModelField } from '../ModelField'
 import { SelectBaseURL } from '../SelectBaseURL'
 import { Advanced, Field, SecretInput, SettingsCard } from '../components'
 
-/** Every saved AI profile; the modes pick theirs in their own groups or via 「用于」 */
+/** Every saved AI profile; hints use the one picked in 出提示 or via 「用于」 */
 export function AiModelsSection() {
   const { apiBaseURL, apiKey, apiHeaders, disableThinking, updateCredential } = useSettingsStore()
 
   return (
     <SettingsCard Icon={Bot} title="AI 模型" extra={<ApiSaveStatus />}>
       <p className="-mt-2 mb-4 text-xs font-light">
-        在这里保存常用的 AI 配置；出提示时用其中一个，可在「对话模式」设置里或用快捷键切换
+        在这里保存常用的 AI 配置；出提示时用其中一个，可在「设置 → 出提示」里或用快捷键切换
       </p>
       <ApiProfiles>
         <Field label="API Base URL" note="可选常用平台，也可输入其他 OpenAI 兼容地址">

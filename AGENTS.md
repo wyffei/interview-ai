@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**语音面试助手** is a desktop application that listens to the other side of an online interview (system audio), recognises it sentence by sentence and shows short AI hints for answering, drawing on the user's resume and 复盘库 (prepared interview material). It is a fork of interview-coder-cn with 截图模式 (screenshot solving) removed. The window is invisible to screen-sharing software.
+**语音面试助手** is a desktop application that listens to the other side of an online interview (system audio), recognises it sentence by sentence and shows short AI hints for answering, drawing on the user's resume and 复盘库 (prepared interview material). It is a fork of interview-coder-cn. The window is invisible to screen-sharing software.
 
 Key capabilities:
 - Real-time speech recognition of system audio (DashScope Fun-ASR); a finished sentence asks for a hint at once, or the shortcut does
@@ -33,10 +33,10 @@ src/
 │   ├── main-window.ts       # BrowserWindow creation (frameless, transparent, always-on-top)
 │   ├── toolbar-window.ts    # Overlay toolbar window: bounds/visibility/opacity glued to main window
 │   ├── shortcuts.ts         # Global shortcuts: window show/hide and top-most handling, click-through, the actions they and the toolbar trigger
-│   ├── conversation.ts      # 对话模式: utterances, hint cards, automatic / manual hint triggering, 复盘库 lookup per hint
+│   ├── conversation.ts      # The conversation: utterances, hint cards, automatic / manual hint triggering, 复盘库 lookup per hint
 │   ├── stream.ts            # consumeStream() (answer and reasoning chunks), API error messages
 │   ├── ai.ts                # Vercel AI SDK integration: getHintStream() with the conversation profile
-│   ├── knowledge.ts         # 资料库: material on disk under userData, IPC, the system prompt block per mode
+│   ├── knowledge.ts         # 资料库: material on disk under userData, IPC, the system prompt block, 复盘库 search
 │   ├── knowledge-parse.ts   # Text out of an imported PDF (unpdf) / .docx (mammoth) / Markdown / TXT (UTF-8, UTF-16, GBK)
 │   ├── docx-markdown.ts     # mammoth's HTML → Markdown (headings as `#`, bold, lists, table rows); no imports
 │   ├── thinking.ts          # 「关闭思考」: per-platform request-body fields + retry without them when refused
@@ -53,29 +53,28 @@ src/
 │   └── index.d.ts           # Type declarations for window.electron and window.api
 ├── shared/                  # Pure TS used by both main and renderer (no Electron / DOM / Node imports)
 │   ├── request-headers.ts   # Parse the custom request headers text, merge it over the Bearer key
-│   ├── api-profile.ts       # ApiProfile + AppMode (now only `conversation`) types
-│   ├── knowledge.ts         # KnowledgeDoc type (+ `use`: full / search), the suggested per-mode limit, estimateTokens()
+│   ├── api-profile.ts       # ApiProfile type, DEFAULT_API_BASE_URL
+│   ├── knowledge.ts         # KnowledgeDoc type (+ `use`: full / search), the suggested limit, estimateTokens()
 │   ├── review-search.ts     # 复盘库 search: material cut into entries by heading, title matching, BM25, direct / adapt / none tiers; no imports
-│   └── conversation.ts      # 对话模式 types (Utterance, HintCard, HintMode) + countMeaningfulChars()
+│   └── conversation.ts      # Conversation types (Utterance, HintCard, HintMode) + countMeaningfulChars()
 └── renderer/
     ├── index.html            # SPA entry
     └── src/
         ├── main.tsx          # React root render
         ├── App.tsx           # Router + settings sync + shortcut init + Toaster
         ├── toolbar/OverlayToolbar.tsx # Contents of the toolbar window (route `/toolbar`)
-        ├── conversation/     # 对话模式 page (`/`)
+        ├── conversation/     # The main page (`/`)
         │   ├── index.tsx     # Layout + snapshot / event sync with main's conversation
         │   ├── PrerequisitesChecker.tsx # Welcome dialog for the first API key
         │   ├── TranscriptPanel.tsx # The other side's sentences; a hovered hint highlights its own
         │   ├── HintPanel.tsx       # Hint cards + empty states
-        │   ├── ConversationStatusBar.tsx # Listening, 自动/手动, hint / stop buttons with shortcuts
         │   └── listening.ts  # Start / stop recognition, toggle hint mode
         ├── settings/         # Settings page: left nav, one group at a time (`?tab=`)
-        │   ├── index.tsx     # Shell: nav (通用: AI 模型 / 资料库 / 语音 / 界面与隐私 / 快捷键; 对话: 对话模式)
+        │   ├── index.tsx     # Shell: nav (出提示 / AI 模型 / 资料库 / 语音 / 界面与隐私 / 快捷键)
         │   ├── sections/     # One component per nav entry
         │   ├── components.tsx      # SettingsCard, Field, SaveDirField, Advanced (folded), SecretInput
         │   ├── SceneEditor.tsx     # Prompt scenes: pick, edit, add, delete, restore
-        │   ├── ModeProfileSelect.tsx # Which saved profile hints are asked for with
+        │   ├── ProfileSelect.tsx     # Which saved profile hints are asked for with
         │   ├── KnowledgeField.tsx  # What the 资料库 contributes to hints, linking to it
         │   ├── ApiProfiles.tsx     # Saved AI profiles: open, add, rename, remove, use for hints (「用于」)
         │   ├── ModelField.tsx      # Model row: picker + mismatch warning with one-click fix
@@ -103,7 +102,7 @@ src/
         │   │   ├── shortcuts.ts # Shortcut bindings (persisted v5, with migration)
         │   │   └── transcription.ts # isTranscribing
         │   ├── toolbar-actions.ts # Toolbar buttons (action + icon + label), shared with help
-        │   ├── use-mode-page.ts   # useModePage(): page state to main, opacity, profile / scene shortcuts; MODE_PATH
+        │   ├── use-main-page.ts   # useMainPage(): page state to main, opacity, profile / scene shortcuts; HOME_PATH
         │   ├── providers.ts  # Known platforms + each one's spelling of the same model
         │   ├── platform-models.ts # usePlatformModels(): cached `/models` list per URL + key
         │   ├── model-switch.ts    # changeApiBaseURL(): switch URL, toast the linked model change
@@ -163,7 +162,7 @@ src/
 - `selectConversationDir` — folder picker for saving conversations
 - `window-resize-start` / `window-resize-stop` (`send`, not `invoke`) — begin/end a cursor-tracked window resize
 - `start-transcription` / `stop-transcription` — speech transcription lifecycle; start takes `{ maxSentenceSilence }`
-- `conversation:get-snapshot` / `conversation:request-hint` / `conversation:stop-hints` / `conversation:clear` — 对话模式
+- `conversation:get-snapshot` / `conversation:request-hint` / `conversation:stop-hints` / `conversation:clear` / `conversation:set-note` / `conversation:submit-note` — the conversation
 - `knowledge:list` / `knowledge:get-text` / `knowledge:pick-files` / `knowledge:import-files` / `knowledge:create` / `knowledge:update` / `knowledge:reimport` / `knowledge:remove` — 资料库; imports and reimports return their failures as values, not rejections
 
 **Main → Renderer (send):**
@@ -171,19 +170,20 @@ src/
 - `adjust-opacity` — step the window opacity; the renderer store owns it
 - `switch-api-profile` — step the AI profile hints use (`1` / `-1`); the list lives in the renderer store
 - `cycle-scene` — step to the next prompt scene; the renderer owns the list and syncs the new prompt back
-- `toggle-hint-mode` — flip 对话模式 between automatic and manual hints; the renderer owns the setting
-- `conversation-utterance` / `conversation-utterance-removed` / `conversation-hint` / `conversation-hint-chunk` / `conversation-cleared` / `conversation-notice` — 对话模式 state from main
+- `toggle-hint-mode` — flip between automatic and manual hints; the renderer owns the setting
+- `conversation-utterance` / `conversation-utterance-removed` / `conversation-hint` / `conversation-hint-chunk` / `conversation-cleared` / `conversation-notice` — conversation state from main
 - `thinking-unsupported` — the active model refused 「关闭思考」 (model name); sent once per model per session, the request has already been resent without it
 - `scroll-page-up` / `scroll-page-down` — keyboard-driven scroll
 - `toggle-transcription` — trigger start/stop transcription from shortcut
 - `sync-toolbar-settings` — push toolbar-only settings (hover dwell) into the toolbar window
+- `sync-toolbar-status` — push listening / hint mode into the toolbar window, whose buttons show them (`getToolbarStatus` fetches it on load)
 - `transcription-error` / `transcription-stopped` — transcription events
 
 ### Zustand Stores
 
 | Store | File | Persisted | Key State |
 |-------|------|-----------|-----------|
-| `useSettingsStore` | `lib/store/settings.ts` | Yes (v8) | `apiProfiles`, `activeProfileId` (the one being edited), `conversationProfileId` (the one hints use), `hasConfiguredApi`, `apiBaseURL`, `apiKey`, `apiHeaders`, `model`, `disableThinking` (mirror of the edited profile), `customModels`, `customModelsByBaseURL`, `modelByBaseURL`, `scenes` (prompt scenes), `conversationSceneId`, `conversationPrompt` (derived from the scene), `conversationHintMode`, `conversationSilenceMs`, `conversationMinChars`, `conversationTranscriptHidden`, `conversationAutoSave`, `conversationSaveDir`, `opacity`, `resizable`, `showOverlayToolbar`, `toolbarHoverDelay`, `hideShortcutHints`, `dashscopeApiKey`. `merge` drops the removed 截图模式's keys (`REMOVED_KEYS`) and its scenes (saved without `mode: 'conversation'`) on every load |
+| `useSettingsStore` | `lib/store/settings.ts` | Yes (v8) | `apiProfiles`, `activeProfileId` (the one being edited), `conversationProfileId` (the one hints use), `hasConfiguredApi`, `apiBaseURL`, `apiKey`, `apiHeaders`, `model`, `disableThinking` (mirror of the edited profile), `customModels`, `customModelsByBaseURL`, `modelByBaseURL`, `scenes` (prompt scenes), `conversationSceneId`, `conversationPrompt` (derived from the scene), `conversationHintMode`, `conversationSilenceMs`, `conversationMinChars`, `conversationTranscriptHidden`, `conversationAutoSave`, `conversationSaveDir`, `opacity`, `resizable`, `showOverlayToolbar`, `toolbarHoverDelay`, `dashscopeApiKey` |
 | `useShortcutsStore` | `lib/store/shortcuts.ts` | Yes (v5) | `shortcuts` (action → key mapping with categories); `merge` adds new default actions on every load and drops removed ones, so a new shortcut needs no `version` bump |
 | `useTranscriptionStore` | `lib/store/transcription.ts` | No | `isTranscribing` |
 | `useConversationStore` | `lib/store/conversation.ts` | No | `utterances`, `hints`, `errorMessage`, `focusedHintId` |
@@ -214,7 +214,8 @@ A second `BrowserWindow` (`src/main/toolbar-window.ts`) that renders the `/toolb
 - Buttons carry no `title`: native tooltips are drawn outside the window and are not covered by content protection
 - It never receives a `click` on Windows: `focusable: false` makes Chromium answer the press's WM_MOUSEACTIVATE with `MA_NOACTIVATEANDEAT`, so the button-down is dropped by the OS. Only the release and the moves arrive — anything interactive in this window must hang off `mouseup`/`pointermove`, never `click` or `pointerdown`
 - `TOOLBAR_ACTIONS` (`lib/toolbar-actions.ts`) drives both the toolbar and its help page section. `triggerAction` is validated against `clickableActions` in `shortcuts.ts`
-- Resizing the toolbar window never rescales its buttons: `OverlayToolbar` measures the bar and renders only the actions that fit, dropping the rest from the end
+- Each button is an icon with a short `text` beside it, no shortcut; listening, 自动/手动 and click-through show their current state. The main page has no button bar of its own — this toolbar and the shortcuts are the controls
+- Resizing the toolbar window never rescales its buttons: `OverlayToolbar` measures the bar and hides (`invisible`) the actions that do not fit, from the end
 
 ### Window Resizing
 
@@ -232,27 +233,30 @@ Both windows are created with `resizable: false` — toggling Electron's native 
 - Provider: `@ai-sdk/openai-compatible` with custom `baseURL` (works with any OpenAI-compatible API; an empty one means OpenAI, `DEFAULT_API_BASE_URL`). Not `@ai-sdk/openai`: its chat-completions parser drops the `reasoning_content` / `reasoning` deltas thinking models send
 - Custom request headers (`apiHeaders`, one `Name: Value` per line) go on every AI request and on the `/models` fetch, through `buildRequestHeaders()` in `src/shared/request-headers.ts`. They override the Bearer key case-insensitively, so a gateway can replace `Authorization`
 - Model fallback when a profile has none: `Qwen/Qwen3-VL-32B-Instruct` for SiliconFlow, `gpt-5-mini` otherwise
-- AI profiles (`apiProfiles`): each holds its own URL / key / headers / model / thinking switch. Hints are requested with `conversationProfileId` (picked in the 对话模式 settings group or via 「用于」); main resolves it with `getModeProfile()` in `settings.ts`. `activeProfileId` is only the profile open in the AI 模型 editor, mirrored onto the flat `apiBaseURL` / `apiKey` / `apiHeaders` / `model` / `disableThinking` fields the editor binds to (`CREDENTIAL_KEYS`). The profile is authoritative (`reconcileApiProfiles()` restores the flat fields from it on load), so never write those with `updateSetting`: use `updateCredential()`, `changeApiBaseURL()` or `setModel()`, which keep the profile in step — otherwise the edit is lost on the next profile switch or restart
+- AI profiles (`apiProfiles`): each holds its own URL / key / headers / model / thinking switch. Hints are requested with `conversationProfileId` (picked in the 出提示 settings group or via 「用于」); main resolves it with `getHintProfile()` in `settings.ts`. `activeProfileId` is only the profile open in the AI 模型 editor, mirrored onto the flat `apiBaseURL` / `apiKey` / `apiHeaders` / `model` / `disableThinking` fields the editor binds to (`CREDENTIAL_KEYS`). The profile is authoritative (`reconcileApiProfiles()` restores the flat fields from it on load), so never write those with `updateSetting`: use `updateCredential()`, `changeApiBaseURL()` or `setModel()`, which keep the profile in step — otherwise the edit is lost on the next profile switch or restart
 - The welcome dialog (`PrerequisitesChecker`) shows only until a key has ever been saved (`hasConfiguredApi`), so a hint asked for with a blank profile key is reported on its card instead
 - Model ↔ API Base URL linkage lives in the renderer (`lib/providers.ts`): each platform spells the same model differently (`deepseek-flash` vs `deepseek/deepseek-v4.1-flash`), so the picker lists the selected platform's spelling and `setApiBaseURL()` translates the model on switch (else restores the one last used with that URL, else the platform default). Change the API Base URL through `changeApiBaseURL()`, not `updateSetting`, so the model follows and the user gets an undo toast.
-- System prompts are maintained in the renderer settings store (`PRESET_SCENE_PROMPTS` in `lib/store/settings.ts`) as "prompt scenes" (`mode: 'conversation'`; scenes saved without it were 截图模式's and are dropped on load). The active scene's prompt is synced to main as `conversationPrompt`
+- System prompts are maintained in the renderer settings store (`PRESET_SCENE_PROMPTS` in `lib/store/settings.ts`) as "prompt scenes". The active scene's prompt is synced to main as `conversationPrompt`
 - Preset scenes can be deleted too (at least one scene always remains). `merge` rebuilds the presets on every load so new ones reach existing users, so a deleted preset's id goes into `removedPresetSceneIds` and is skipped; 「恢复预设场景」 (`restorePresetScenes()`) brings them back with default prompts
 - The system prompt is read per request, so switching scenes (`cycleScene` shortcut / toolbar) applies from the next hint; one already streaming keeps its prompt. The header shows `scene · model`, since a shortcut or a toolbar hover can switch it unnoticed
 - Reasoning: `ai.ts` turns `fullStream` into `StreamChunk`s tagged `reasoning` or `text` (`stream.ts`); a card keeps it (`HintCard.reasoning`) and shows it once the card is published, not per chunk
 - 「关闭思考」 (`disableThinking`, per profile, off by default): the SDK has no field for it and every platform spells it differently, so `createThinkingOffFetch()` in `thinking.ts` wraps `fetch` and merges the fields into the request body — OpenRouter `reasoning: { enabled: false }`, OpenAI host or a `gpt-`/`o<n>` model name `reasoning_effort: 'none'`, everyone else both `thinking: { type: 'disabled' }` and `enable_thinking: false`. OpenAI rejects any unknown field, and thinking-only models reject the switch, so a 400/422 whose body mentions thinking/reasoning is resent without the fields and that base URL + model is remembered for the session. The switch never makes a request fail; at worst it costs one extra round trip
 
-### Conversation Mode (对话模式)
+### Conversation and Hints
 
 `/` turns what the other side of a call says into hints. Main owns the conversation (`src/main/conversation.ts`); the page shows a copy, fetched with `conversation:get-snapshot` on mount and kept current by events, so visiting the settings mid-call loses nothing:
 - Recognition runs with `max_sentence_silence: conversationSilenceMs`; `transcription.ts` hands every sentence revision to `conversation.ts`. Listening keeps running on the settings / help pages
 - It is meant for system audio: in an online call that is only the other side, so a finished sentence can trigger a hint without speaker detection
 - Automatic (`conversationHintMode: 'auto'`): a finished sentence with at least `conversationMinChars` meaningful characters asks for a hint at once, covering every sentence since the last hint. If the other side keeps talking (a new sentence reaches the minimum while the automatic hint streams) the hint is withdrawn (`waiting`) and rewritten into the same card when they finish — or when that sentence comes to nothing, or listening stops
-- Shortcut / button (`generateHint`, either mode): brings the card being written or waiting up to date, else opens one for everything not yet hinted (a sentence still being spoken included), else rewrites the last hint with 「换一个角度」
+- Shortcut / button (`generateHint`, automatic or manual): brings the card being written or waiting up to date, else opens one for everything not yet hinted (a sentence still being spoken included), else rewrites the last hint with 「换一个角度」
 - Several cards may stream at once. A card restarted by a newer request bumps its `generations` entry, so the stream it replaced never writes to it again
 - The hint panel scrolls each new card to its top and does not follow the stream. The newest card keeps a panel's height of room under it (`last:min-h-full`), else a short one stops at the bottom edge showing one line. A finished card that runs past the bottom pages down once by itself (`revealRest()`), unless the user scrolled since: paging by hand is easy to spot on a call
 - Each request sends the recent sentences as context (20 sentences / 1500 chars) plus the ones the hint is for; earlier hints are not sent back, so requests stay small
+- Note box under the hint panel (`note`): what the user types (a company name the recogniser gets wrong, the project being asked about) goes into every request as 【用户补充的说明】 and into the 复盘库 search's related ranking (not its title match). Kept in main, dropped by a clear. Enter (`submitNote()`) never writes over a hint on screen, unlike the shortcut: it opens a new card for what is not yet hinted, else for the last hint's question with the note in mind (a withdrawn `waiting` card is simply restarted)
+- A bare number in it answers the 「（可确认：……）」 line the latest such hint ended with: a new card answers that question for the option picked (numbered, or split on 「还是」 for prompts saved before the numbering) and the number leaves the box
+- A conversation (one interview) runs from the first sentence heard to 「清空对话」; starting / stopping listening does not split it
 - The preset prompts ask for 「（无需回应）」 (`NO_REPLY`) when nothing needs an answer; the page dims those cards
-- 复盘库 lookup: before a hint is requested, `startHint()` searches the 资料库's searched docs (`searchKnowledge()` in `knowledge.ts`) with what the hint is for. `direct` (one entry's title fits the question, `DIRECT_SCORE`) puts that entry's text on the card at once and asks no model — not for 「换一个角度」, which wants the model's take. `adapt` (a close title, or several equally good ones such as a self-introduction per company) and `none` send the entries found inside the user message (`materialBlock()`, `MATERIAL_CHARS` in all), not the system prompt, so the cached prefix stays the same. The card's `review` records the tier and source for the badge
+- 复盘库 lookup: before a hint is requested, `startHint()` searches the 资料库's searched docs (`searchKnowledge()` in `knowledge.ts`) with what the hint is for. `direct` (one entry's title fits the question, `DIRECT_SCORE`) puts that entry's text on the card at once and asks no model — not for 「换一个角度」, which wants the model's take. `adapt` (a close title, or several equally good ones such as a self-introduction per company) and `none` send the entries found inside the user message (`materialBlock()`, `MATERIAL_CHARS` in all), not the system prompt, so the cached prefix stays the same. The card's `review` records the tier and source for the badge; `none` shows 「未准备」, since personal experience in such a hint may be made up
 - 「保存对话记录到本地」 (`conversationAutoSave`, off by default): `save-conversation.ts` writes the whole conversation as Markdown to `对话记录_<start time>.md` in `conversationSaveDir` (blank = Documents/InterviewCoder), rewritten 1.5s after a change. A clear starts a new file, a pending save is flushed on clear and (synchronously) on `will-quit`, and turning it on mid-conversation saves what is there through `onSettingsChanged()`. Failed / withdrawn / 「（无需回应）」 hints are left out
 
 ### 资料库 (Knowledge)
@@ -260,9 +264,9 @@ Both windows are created with `resizable: false` — toggling Electron's native 
 Material the user wants the AI to draw on — a resume, prepared Q&A, notes — kept by main (`src/main/knowledge.ts`), not by the renderer store:
 - Stored under `userData/knowledge/`: `index.json` for the list, `<id>.txt` per text, both cached in memory once read. Not in localStorage: a few documents would outgrow it, and settings are synced to main whole on every change
 - Only the extracted text is kept, and the user can edit it (a PDF's layout often needs it); `sourcePath` is remembered for 「重新导入」, which overwrites those edits
-- Each doc lists the modes it is sent with (`modes`: `['conversation']` = enabled, empty = kept but unused; lists saved with 截图模式 are filtered on load). `getKnowledgePrompt(mode)` wraps them in `<资料 name="…">` blocks with the rules for using them, and `getSystemPrompt()` in `ai.ts` puts that **before** the scene prompt: a prefix stable across requests and scene switches is what platforms cache, and the scene's format rules end up closer to the question
+- A doc can be switched off (`disabled`, absent = used). `getKnowledgePrompt()` wraps the used full docs in `<资料 name="…">` blocks with the rules for using them, and `getSystemPrompt()` in `ai.ts` puts that **before** the scene prompt: a prefix stable across requests and scene switches is what platforms cache, and the scene's format rules end up closer to the question
 - Each doc is used `full` (sent with every request; the default, and what docs saved before the field existed get) or `search` (按题检索: 复盘库, 题库). Imports over `KNOWLEDGE_SEARCH_SUGGESTED_CHARS` start as `search`. Searched docs are left out of `getKnowledgePrompt()`, cut into entries by `parseReviewDoc()` (cached per doc and `updatedAt`) and searched per question. `sections` (how many entries) is worked out whenever main hands a doc over (`withStats()`), never saved
-- Full docs are sent whole with every request. `KNOWLEDGE_CHAR_LIMIT` (30,000 chars per mode) only drives a warning in the settings page, counting full docs only; a request that still overflows the model is explained by `extractErrorMessage()`
+- Full docs are sent whole with every request. `KNOWLEDGE_CHAR_LIMIT` (30,000 chars) only drives a warning in the settings page, counting full docs only; a request that still overflows the model is explained by `extractErrorMessage()`
 - Parsers (`unpdf`, `mammoth`) are loaded with `import()` on first use. PDF text is passed through NFKC for the Kangxi radical look-alikes (「⼩」 for 「小」) some fonts map to
 - A .docx is imported as Markdown (`mammoth.convertToHtml` → `docxHtmlToMarkdown()`), not raw text: Word's heading styles are what the 复盘库 search cuts by. Docs imported before keep their plain text until 「重新导入」; the settings row warns when a searched doc yields fewer than 3 entries
 - The settings section is also a drop zone (`webUtils.getPathForFile`, exposed as `getPathForFile`); while it is mounted, a file dropped elsewhere in the window is swallowed instead of replacing the app
@@ -289,7 +293,7 @@ Material the user wants the AI to draw on — a resume, prepared Q&A, notes — 
 - Default shortcuts use `platformAlt` (`Alt` on macOS, `CommandOrControl` on Windows)
 - New actions also need a label in `settings/CustomShortcuts.tsx` and a description in `help/Shortcuts.tsx`
 - Categories: `Window Management`, `Conversation` (hints), `AI` (stop, profile, scene, listening), `Navigation`, `Window Movement`. Only the key of a stored binding is the user's; `merge` takes the category from the code and drops removed actions
-- Actions acting on the page check `inModePage()` (`state.ts`, the conversation page is up) and are answered by `useModePage()`
+- Actions acting on the page check `state.inConversationPage` (`state.ts`) and are answered by `useMainPage()`
 
 ### Mouse Click-through
 
@@ -347,7 +351,7 @@ These are read by dotenv in the main process and merged with renderer-side setti
 
 1. **Three TypeScript configs**: `tsconfig.node.json` (main + preload), `tsconfig.web.json` (renderer). The root `tsconfig.json` is a project references file only.
 
-2. **System prompts live in the renderer**: All preset scene prompts are defined in `src/renderer/src/lib/store/settings.ts` (`PRESET_SCENE_PROMPTS`). The main process only consumes the synced `customPrompt` / `conversationPrompt` and has no built-in prompt of its own.
+2. **System prompts live in the renderer**: All preset scene prompts are defined in `src/renderer/src/lib/store/settings.ts` (`PRESET_SCENE_PROMPTS`). The main process only consumes the synced `conversationPrompt` and has no built-in prompt of its own.
 
 3. **`global.mainWindow`**: The main window reference is stored as a global variable, declared in `src/main/index.d.ts`.
 
@@ -357,7 +361,7 @@ These are read by dotenv in the main process and merged with renderer-side setti
 
 6. **Hint orchestration is in `conversation.ts`**: utterances, hint cards, 复盘库 lookup and streaming. `shortcuts.ts` only handles the window and dispatches shortcut actions.
 
-7. **One page**: the conversation page is the index route (`MODE_PATH`); the settings / help back buttons return there.
+7. **One page**: the conversation page is the index route (`HOME_PATH`); the settings / help back buttons return there.
 
 8. **Window movement**: The window can be moved via keyboard shortcuts in 200px steps (up/down/left/right), and resized by dragging its edges (see Window Resizing).
 

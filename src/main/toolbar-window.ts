@@ -1,9 +1,10 @@
 import { join } from 'node:path'
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, ipcMain, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
+import type { HintMode } from '../shared/conversation'
 
-/** Room for every button of the longer mode's toolbar: 16 × 28px, 2px gaps, 8px padding each side */
-const TOOLBAR_WIDTH = 494
+/** Room for every toolbar button, each an icon with a few characters beside it */
+const TOOLBAR_WIDTH = 800
 const TOOLBAR_HEIGHT = 44
 const TOOLBAR_INSET = 4
 /** Mirrors the renderer's default opacity setting, until the renderer syncs the real one */
@@ -161,6 +162,24 @@ export function syncToolbarSettings(payload: {
   if (!toolbarWindow || toolbarWindow.isDestroyed()) return
   toolbarWindow.webContents.send('sync-toolbar-settings', payload)
 }
+
+export interface ToolbarStatus {
+  listening: boolean
+  hintMode: HintMode
+}
+
+/** What the toolbar's buttons show; kept here since the toolbar's own stores never hear of it */
+let toolbarStatus: ToolbarStatus = { listening: false, hintMode: 'auto' }
+
+export function updateToolbarStatus(patch: Partial<ToolbarStatus>): void {
+  const next = { ...toolbarStatus, ...patch }
+  if (next.listening === toolbarStatus.listening && next.hintMode === toolbarStatus.hintMode) return
+  toolbarStatus = next
+  sendToToolbar('sync-toolbar-status', toolbarStatus)
+}
+
+// The toolbar window may load after the status last changed
+ipcMain.handle('getToolbarStatus', () => toolbarStatus)
 
 /** Reclaim the top spot alongside the main window, without ever revealing a hidden toolbar */
 export function reassertToolbarTopMost(level: number, aggressive: boolean): void {

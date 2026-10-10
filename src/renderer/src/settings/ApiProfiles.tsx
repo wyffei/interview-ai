@@ -21,7 +21,7 @@ const UNNAMED = '未命名配置'
  * The saved AI endpoints as a row of chips, the same pattern as 使用场景: click
  * one to open it, and the panel below (`children`: URL, key, headers, model,
  * thinking switch) edits that one. Which profile hints are asked for with is
- * picked separately (「用于」 below, or the 对话模式 settings group); the chip in
+ * picked separately (「用于」 below, or the 出提示 settings group); the chip in
  * use carries a tag.
  */
 export function ApiProfiles({ children }: { children: ReactNode }) {

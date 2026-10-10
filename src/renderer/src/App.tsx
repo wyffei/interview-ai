@@ -10,7 +10,7 @@ import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { getCloneableFields } from '@/lib/utils'
 import { applyTheme } from '@/lib/theme'
 import { WindowResizeHandles } from '@/components/WindowResizeHandles'
-import { MODE_PATH } from '@/lib/use-mode-page'
+import { HOME_PATH } from '@/lib/use-main-page'
 
 export default function App() {
   const [initialized, setInitialized] = useState(false)
@@ -92,7 +92,7 @@ function ToolbarVisibilityController() {
   useEffect(() => {
     // The toolbar window renders this app too, but must not drive its own visibility
     if (location.pathname === '/toolbar') return
-    void window.api.setToolbarVisible(location.pathname === MODE_PATH && showOverlayToolbar)
+    void window.api.setToolbarVisible(location.pathname === HOME_PATH && showOverlayToolbar)
   }, [location.pathname, showOverlayToolbar])
 
   return null

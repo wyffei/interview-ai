@@ -8,7 +8,7 @@ import {
   reassertToolbarTopMost,
   sendToToolbar
 } from './toolbar-window'
-import { state, setPageChangeHandler, inModePage } from './state'
+import { state, setPageChangeHandler } from './state'
 import { requestHint, stopHints, clearConversation } from './conversation'
 
 type Shortcut = {
@@ -177,7 +177,7 @@ function keepWindowInFront(window: BrowserWindow) {
  */
 function adjustOpacity(delta: number) {
   const mainWindow = global.mainWindow
-  if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
+  if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
   mainWindow.webContents.send('adjust-opacity', delta)
 }
 
@@ -263,19 +263,19 @@ const callbacks: Record<string, () => void> = {
   },
 
   /**
-   * Ask the renderer to step the current mode through the saved AI profiles.
+   * Ask the renderer to step hints through the saved AI profiles.
    * The list lives in the renderer store (persisted there), so main only
    * relays the direction.
    */
   nextApiProfile: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
+    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
     mainWindow.webContents.send('switch-api-profile', 1)
   },
 
   previousApiProfile: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
+    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
     mainWindow.webContents.send('switch-api-profile', -1)
   },
 
@@ -285,7 +285,7 @@ const callbacks: Record<string, () => void> = {
    */
   cycleScene: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
+    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
     mainWindow.webContents.send('cycle-scene')
   },
 
@@ -303,13 +303,13 @@ const callbacks: Record<string, () => void> = {
 
   pageUp: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
+    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
     mainWindow.webContents.send('scroll-page-up')
   },
 
   pageDown: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
+    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
     mainWindow.webContents.send('scroll-page-down')
   },
 
@@ -343,7 +343,7 @@ const callbacks: Record<string, () => void> = {
 
   toggleTranscription: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
+    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
     mainWindow.webContents.send('toggle-transcription')
   },
 
@@ -352,12 +352,12 @@ const callbacks: Record<string, () => void> = {
     if (state.inConversationPage) clearConversation()
   },
 
-  // 对话模式: a hint now, whatever the automatic mode is waiting for
+  // A hint now, whatever automatic hinting is waiting for
   generateHint: () => {
     if (state.inConversationPage) requestHint()
   },
 
-  // 对话模式: the renderer owns the setting, main reads it back on the next sentence
+  // The renderer owns the setting, main reads it back on the next sentence
   toggleHintMode: () => {
     const mainWindow = global.mainWindow
     if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return

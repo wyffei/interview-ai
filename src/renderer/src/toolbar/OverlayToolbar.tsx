@@ -1,15 +1,22 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { Mic, MicOff, PointerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { TOOLBAR_ACTIONS, type ToolbarActionName } from '@/lib/toolbar-actions'
-import type { LucideIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { TOOLBAR_ACTIONS, type ToolbarAction, type ToolbarActionName } from '@/lib/toolbar-actions'
 import { WindowResizeHandles } from '@/components/WindowResizeHandles'
 import { applyTheme } from '@/lib/theme'
 import { useAppStore } from '@/lib/store/app'
+import type { HintMode } from '@/lib/store/settings'
 
-/** Mirrors `.overlay-toolbar` in main.css: `p-2` around `size-7` buttons with `gap-0.5` */
+/** Mirrors `.overlay-toolbar` in main.css: `p-2` around the buttons */
 const BAR_PADDING = 8
-const BUTTON_SIZE = 28
-const BUTTON_GAP = 2
+
+type ToolbarStatus = { listening: boolean; hintMode: HintMode }
+
+const HINT_MODES: { value: HintMode; label: string }[] = [
+  { value: 'auto', label: '自动' },
+  { value: 'manual', label: '手动' }
+]
 
 /**
  * Toolbar rendered in its own always-on-top window above the main window.
@@ -18,10 +25,21 @@ const BUTTON_GAP = 2
  */
 export function OverlayToolbar() {
   const [hoverDelay, setHoverDelay] = useState(0)
+  const [status, setStatus] = useState<ToolbarStatus>({ listening: false, hintMode: 'auto' })
   const barRef = useRef<HTMLDivElement>(null)
   const syncAppState = useAppStore((state) => state.syncAppState)
+  const ignoreMouse = useAppStore((state) => state.ignoreMouse)
   const actions = TOOLBAR_ACTIONS
-  const visibleCount = useVisibleActionCount(barRef, actions.length)
+  const visibleCount = useVisibleActionCount(barRef, actions.length, [status, ignoreMouse])
+
+  // Listening and the hint mode are owned by the main window; main relays them
+  useEffect(() => {
+    window.api.getToolbarStatus().then(setStatus)
+    window.api.onSyncToolbarStatus(setStatus)
+    return () => {
+      window.api.removeSyncToolbarStatusListener()
+    }
+  }, [])
 
   // This window's store is its own copy, so the state main pushes has to be
   // relayed here; otherwise the toolbar's own buttons show stale state. The
@@ -52,8 +70,15 @@ export function OverlayToolbar() {
 
   return (
     <div ref={barRef} className="overlay-toolbar overlay-toolbar-root">
-      {actions.slice(0, visibleCount).map(({ action, Icon }) => (
-        <ToolbarButton key={action} action={action} Icon={Icon} hoverDelay={hoverDelay} />
+      {actions.map((item, index) => (
+        <ToolbarButton
+          key={item.action}
+          action={item.action}
+          hoverDelay={hoverDelay}
+          hidden={index >= visibleCount}
+        >
+          <ButtonContent item={item} status={status} ignoreMouse={ignoreMouse} />
+        </ToolbarButton>
       ))}
       {/* Always on, width only: the height is the button row. main.css keeps
           these edges from ever showing a resize cursor. `nonActivating` because
@@ -63,15 +88,73 @@ export function OverlayToolbar() {
   )
 }
 
+/** Icon with its text beside it; listening, hint mode and click-through show their state */
+function ButtonContent({
+  item: { action, Icon, text },
+  status,
+  ignoreMouse
+}: {
+  item: ToolbarAction
+  status: ToolbarStatus
+  ignoreMouse: boolean
+}) {
+  if (action === 'toggleTranscription') {
+    return status.listening ? (
+      <>
+        <Mic className="size-3.5 animate-pulse text-green-500" />
+        停止监听
+      </>
+    ) : (
+      <>
+        <MicOff className="size-3.5 opacity-70" />
+        开始监听
+      </>
+    )
+  }
+  if (action === 'toggleHintMode') {
+    return (
+      <span className="flex items-center rounded-md bg-app-chip p-0.5">
+        {HINT_MODES.map(({ value, label }) => (
+          <span
+            key={value}
+            className={cn(
+              'rounded px-1.5 py-0.5',
+              value === status.hintMode ? 'bg-[var(--app-hover-bg)]' : 'opacity-60'
+            )}
+          >
+            {label}
+          </span>
+        ))}
+      </span>
+    )
+  }
+  if (action === 'ignoreOrEnableMouse' && ignoreMouse) {
+    return (
+      <>
+        <PointerOff className="size-3.5" />
+        取消穿透
+      </>
+    )
+  }
+  return (
+    <>
+      <Icon className="size-3.5" />
+      {text}
+    </>
+  )
+}
+
 /**
  * Buttons keep their size when the toolbar window is resized; the ones that no
- * longer fit are dropped from the end, so a narrowed toolbar never shows a
- * sliver of a button. The bar's own width never depends on its children, so
- * measuring it here cannot feed back into the layout.
+ * longer fit are hidden from the end, so a narrowed toolbar never shows a
+ * sliver of a button. Hidden buttons keep their room (`visibility: hidden`), so
+ * hiding them cannot feed back into the measurement. `deps` re-measures when a
+ * button's text changes.
  */
 function useVisibleActionCount(
   barRef: RefObject<HTMLDivElement | null>,
-  actionCount: number
+  actionCount: number,
+  deps: unknown[]
 ): number {
   const [count, setCount] = useState(actionCount)
 
@@ -80,8 +163,13 @@ function useVisibleActionCount(
     if (!bar) return
 
     const measure = () => {
-      const available = bar.clientWidth - BAR_PADDING * 2
-      const fits = Math.floor((available + BUTTON_GAP) / (BUTTON_SIZE + BUTTON_GAP))
+      const right = bar.getBoundingClientRect().right - BAR_PADDING
+      const buttons = Array.from(bar.querySelectorAll<HTMLElement>(':scope > button'))
+      let fits = 0
+      // A pixel of slack for fractional display scaling
+      while (fits < buttons.length && buttons[fits].getBoundingClientRect().right <= right + 1) {
+        fits++
+      }
       setCount(Math.min(actionCount, Math.max(1, fits)))
     }
 
@@ -89,7 +177,8 @@ function useVisibleActionCount(
     const observer = new ResizeObserver(measure)
     observer.observe(bar)
     return () => observer.disconnect()
-  }, [barRef, actionCount])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [barRef, actionCount, ...deps])
 
   return count
 }
@@ -108,12 +197,14 @@ function useVisibleActionCount(
  */
 function ToolbarButton({
   action,
-  Icon,
-  hoverDelay
+  hoverDelay,
+  hidden,
+  children
 }: {
   action: ToolbarActionName
-  Icon: LucideIcon
   hoverDelay: number
+  hidden: boolean
+  children: ReactNode
 }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [isDwelling, setIsDwelling] = useState(false)
@@ -144,7 +235,8 @@ function ToolbarButton({
   return (
     <Button
       variant="ghost"
-      size="icon"
+      size="sm"
+      className={cn(hidden && 'invisible')}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={cancelDwell}
       onMouseUp={(event) => {
@@ -153,7 +245,7 @@ function ToolbarButton({
         void window.api.triggerAction(action)
       }}
     >
-      <Icon />
+      {children}
       {isDwelling && (
         <span className="dwell-progress" style={{ animationDuration: `${hoverDelay}ms` }} />
       )}

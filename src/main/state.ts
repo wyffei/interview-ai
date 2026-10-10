@@ -26,7 +26,7 @@ ipcMain.handle('updateAppState', (_event, next: Partial<AppState>) => {
 ipcMain.handle('getAppState', () => state)
 
 export const state = {
-  /** 对话模式's page is on screen */
+  /** The conversation page is on screen; the shortcuts that act on it check this */
   inConversationPage: false,
   /**
    * Whether the settings page is on screen. Click-through is suspended there:
@@ -38,8 +38,3 @@ export const state = {
 }
 
 export type AppState = typeof state
-
-/** The conversation page is on screen, where the shortcuts act */
-export function inModePage(): boolean {
-  return state.inConversationPage
-}

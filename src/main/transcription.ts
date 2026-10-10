@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import WebSocket from 'ws'
 import { randomUUID } from 'node:crypto'
+import { updateToolbarStatus } from './toolbar-window'
 
 const WS_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference/'
 
@@ -9,7 +10,6 @@ let taskId: string | null = null
 let isTranscribing = false
 let taskStarted = false
 
-/** Every sentence goes to conversation.ts, revision by revision */
 export interface TranscriptionOptions {
   /** Silence (ms) that ends a sentence; the recogniser's default (1300ms) when absent */
   maxSentenceSilence?: number
@@ -19,7 +19,7 @@ type SentenceListener = (text: string, final: boolean) => void
 const sentenceListeners = new Set<SentenceListener>()
 const endListeners = new Set<() => void>()
 
-/** 对话模式: every revision of the sentence being spoken, and its final text */
+/** Every revision of the sentence being spoken, and its final text */
 export function onConversationSentence(listener: SentenceListener): void {
   sentenceListeners.add(listener)
 }
@@ -36,6 +36,7 @@ export function isTranscriptionRunning(): boolean {
 /** Tell the renderer and the listeners in main that recognition has stopped */
 function reportStopped() {
   sendToRenderer('transcription-stopped')
+  updateToolbarStatus({ listening: false })
   endListeners.forEach((listener) => listener())
 }
 
@@ -64,6 +65,7 @@ function startTranscription(apiKey: string, options: TranscriptionOptions = {}) 
 
   cleanup()
   isTranscribing = true
+  updateToolbarStatus({ listening: true })
   taskId = randomUUID()
   const silence = options.maxSentenceSilence
 

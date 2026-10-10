@@ -23,7 +23,7 @@ export function OverlayToolbarHelp() {
         </li>
         <li>
           拖动工具条的左右边缘可以调整它的宽度（高度固定）。边缘不会出现缩放光标，但照样可以拖。
-          按钮尺寸保持不变，宽度不够时会从右侧开始隐藏放不下的按钮。
+          按钮尺寸保持不变，宽度不够时会从右侧开始隐藏放不下的按钮。移动窗口没有做成按钮，请用快捷键。
         </li>
         <li>隐藏/显示主窗口没有做成按钮：窗口隐藏后工具条也会一起隐藏，只能用快捷键唤回。</li>
         <li>如不需要，可在「设置 → 界面与隐私 → 悬浮工具条」中关闭。</li>
@@ -38,10 +38,11 @@ function ToolbarActions() {
 
   return (
     <div className="space-y-2">
-      <div className="overlay-toolbar w-fit">
-        {actions.map(({ action, Icon }) => (
-          <div key={action} className="flex size-7 items-center justify-center">
-            <Icon className="size-4" />
+      <div className="overlay-toolbar w-fit max-w-full overflow-x-auto">
+        {actions.map(({ action, Icon, text }) => (
+          <div key={action} className="flex h-7 shrink-0 items-center gap-1 px-2 text-xs">
+            <Icon className="size-3.5" />
+            {text}
           </div>
         ))}
       </div>

@@ -4,7 +4,6 @@ import { rename, unlink, writeFile } from 'fs/promises'
 import { basename, extname, join } from 'path'
 import { randomUUID } from 'crypto'
 import { extractFileText, normalizeText } from './knowledge-parse'
-import type { AppMode } from '../shared/api-profile'
 import {
   estimateTokens,
   KNOWLEDGE_EXTENSIONS,
@@ -23,8 +22,8 @@ import {
 } from '../shared/review-search'
 
 /**
- * 资料库: reference material (resume, prepared Q&A, notes) put in front of a
- * mode's system prompt. It lives on disk under userData, not in the renderer's
+ * 资料库: reference material (resume, prepared Q&A, notes) put in front of the
+ * system prompt, or searched per question. It lives on disk under userData, not in the renderer's
  * persisted settings: a few documents would outgrow localStorage, and settings
  * are synced to main as a whole on every change. `index.json` holds the list,
  * `<id>.txt` each text; both are kept in memory once read, since every request
@@ -53,8 +52,6 @@ function load(): KnowledgeDoc[] {
       for (const doc of saved) {
         // A text lost outside the app takes its entry with it
         if (!existsSync(textPath(doc.id))) continue
-        // Lists saved while 截图模式 existed may still name it
-        doc.modes = (doc.modes ?? []).filter((m) => m === 'conversation')
         texts.set(doc.id, readFileSync(textPath(doc.id), 'utf-8'))
         docs.push(doc)
       }
@@ -115,7 +112,6 @@ async function addDoc(
     name: tidyName(name, `资料${load().length + 1}`),
     ...(source ? { source: source.name, sourcePath: source.path } : {}),
     ...measure(text),
-    modes: ['conversation'],
     // A long 复盘库 sent whole would slow every hint down; searched, only what fits goes along
     use: text.length > KNOWLEDGE_SEARCH_SUGGESTED_CHARS ? 'search' : 'full',
     updatedAt: Date.now()
@@ -149,7 +145,8 @@ async function updateDoc(id: string, patch: KnowledgePatch): Promise<KnowledgeDo
   const doc = load().find((d) => d.id === id)
   if (!doc) return null
   if (patch.name !== undefined) doc.name = tidyName(patch.name, doc.name)
-  if (patch.modes) doc.modes = patch.modes.filter((m) => m === 'conversation')
+  if (patch.disabled === true) doc.disabled = true
+  else if (patch.disabled === false) delete doc.disabled
   if (patch.use === 'full' || patch.use === 'search') doc.use = patch.use
   if (patch.text !== undefined) {
     const text = normalizeText(patch.text)
@@ -162,7 +159,7 @@ async function updateDoc(id: string, patch: KnowledgePatch): Promise<KnowledgeDo
   return withStats(doc)
 }
 
-/** Read the file it came from again; keeps its name and modes */
+/** Read the file it came from again; keeps its name and settings */
 async function reimportDoc(id: string): Promise<{ doc?: KnowledgeDoc; error?: string }> {
   const doc = load().find((d) => d.id === id)
   if (!doc?.sourcePath) return { error: '这份资料不是从文件导入的' }
@@ -186,15 +183,13 @@ async function removeDoc(id: string): Promise<void> {
 }
 
 /**
- * The material a mode uses, as the opening of its system prompt. It goes before
+ * The material sent in full, as the opening of the system prompt. It goes before
  * the scene's prompt: a prefix that stays the same across requests (and across
  * scene switches) is what platforms cache, and the scene's format rules then
  * sit closer to the question.
  */
-export function getKnowledgePrompt(mode: AppMode): string {
-  const used = load().filter(
-    (doc) => doc.modes.includes(mode) && doc.use !== 'search' && texts.get(doc.id)
-  )
+export function getKnowledgePrompt(): string {
+  const used = load().filter((doc) => !doc.disabled && doc.use !== 'search' && texts.get(doc.id))
   if (used.length === 0) return ''
 
   const blocks = used.map(
@@ -216,7 +211,7 @@ export function getKnowledgePrompt(mode: AppMode): string {
 
 /** Entries of each searched doc, by id, for the text they were cut from */
 const parsed = new Map<string, { updatedAt: number; entries: ReviewEntry[] }>()
-/** The index over every doc a mode searches, rebuilt when that set or a text changes */
+/** The index over every searched doc, rebuilt when that set or a text changes */
 let searchIndex: { key: string; index: ReviewIndex } | null = null
 
 function entriesOf(doc: KnowledgeDoc): ReviewEntry[] {
@@ -233,19 +228,19 @@ function withStats(doc: KnowledgeDoc): KnowledgeDoc {
 }
 
 /**
- * 复盘库 search for one question (对话模式): what the mode's searched docs
- * have for it. Null when the mode searches none, so callers can tell 「nothing
- * found」 from 「nothing to search」.
+ * 复盘库 search for one question: what the searched docs have for it. Null
+ * when there are none, so callers can tell 「nothing found」 from 「nothing to
+ * search」.
  */
-export function searchKnowledge(mode: AppMode, question: string): ReviewLookup | null {
+export function searchKnowledge(question: string, hint = ''): ReviewLookup | null {
   if (!question.trim()) return null
-  const used = load().filter((doc) => doc.modes.includes(mode) && doc.use === 'search')
+  const used = load().filter((doc) => !doc.disabled && doc.use === 'search')
   if (used.length === 0) return null
   const key = used.map((doc) => `${doc.id}@${doc.updatedAt}`).join('|')
   if (searchIndex?.key !== key) {
     searchIndex = { key, index: buildReviewIndex(used.flatMap(entriesOf)) }
   }
-  return lookupReview(searchIndex.index, question)
+  return lookupReview(searchIndex.index, question, undefined, hint)
 }
 
 ipcMain.handle('knowledge:list', () => load().map(withStats))

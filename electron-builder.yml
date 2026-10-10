@@ -12,7 +12,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: 截屏解题助手
+  executableName: 语音面试助手
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}

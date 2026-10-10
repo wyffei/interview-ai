@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { ConversationSnapshot, HintCard, Utterance } from '../../../../shared/conversation'
 
 /**
- * 对话模式's page state: a copy of what main holds (see main conversation.ts),
+ * The conversation page state: a copy of what main holds (see main conversation.ts),
  * refreshed from a snapshot on mount and kept current by its events.
  */
 interface ConversationState {
@@ -11,6 +11,8 @@ interface ConversationState {
   errorMessage: string | null
   /** The hint whose sentences are highlighted in the transcript */
   focusedHintId: number | null
+  /** Keywords typed for the hints; main keeps the copy requests use */
+  note: string
 }
 
 interface ConversationStore extends ConversationState {
@@ -23,6 +25,7 @@ interface ConversationStore extends ConversationState {
   clear: () => void
   setErrorMessage: (message: string | null) => void
   setFocusedHintId: (id: number | null) => void
+  setNote: (note: string) => void
 }
 
 export const useConversationStore = create<ConversationStore>()((set) => ({
@@ -30,7 +33,8 @@ export const useConversationStore = create<ConversationStore>()((set) => ({
   hints: [],
   errorMessage: null,
   focusedHintId: null,
-  applySnapshot: ({ utterances, hints }) => set({ utterances, hints }),
+  note: '',
+  applySnapshot: ({ utterances, hints, note }) => set({ utterances, hints, note }),
   upsertUtterance: (utterance) =>
     set((state) => {
       const index = state.utterances.findIndex((u) => u.id === utterance.id)
@@ -55,7 +59,12 @@ export const useConversationStore = create<ConversationStore>()((set) => ({
         chunks.has(h.id) ? { ...h, text: h.text + chunks.get(h.id) } : h
       )
     })),
-  clear: () => set({ utterances: [], hints: [], errorMessage: null, focusedHintId: null }),
+  clear: () =>
+    set({ utterances: [], hints: [], errorMessage: null, focusedHintId: null, note: '' }),
   setErrorMessage: (errorMessage) => set({ errorMessage }),
-  setFocusedHintId: (focusedHintId) => set({ focusedHintId })
+  setFocusedHintId: (focusedHintId) => set({ focusedHintId }),
+  setNote: (note) => {
+    set({ note })
+    void window.api.setConversationNote(note)
+  }
 }))

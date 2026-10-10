@@ -62,7 +62,7 @@ export function VoiceSection() {
 
         <Field
           label="音频输入设备"
-          note="默认捕获系统音频，即会议里对方的声音；对话模式请保持系统音频，否则自己说话也会触发提示"
+          note="默认捕获系统音频，即会议里对方的声音；请保持系统音频，否则自己说话也会触发提示"
         >
           <Select
             value={audioInputDeviceId || 'system'}

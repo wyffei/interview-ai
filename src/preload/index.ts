@@ -4,6 +4,7 @@ import type { AppSettings } from '../main/settings'
 import type { AppState } from '../main/state'
 import type { ListModelsOptions, ModelListResult } from '../main/model-list'
 import type { TranscriptionOptions } from '../main/transcription'
+import type { ToolbarStatus } from '../main/toolbar-window'
 import type { ConversationSnapshot, HintCard, Utterance } from '../shared/conversation'
 import type { KnowledgeDoc, KnowledgeImportResult, KnowledgePatch } from '../shared/knowledge'
 
@@ -83,6 +84,16 @@ const api = {
   removeSyncToolbarSettingsListener: () => {
     ipcRenderer.removeAllListeners('sync-toolbar-settings')
   },
+  // Listening / hint mode as the toolbar's buttons show them, pushed from main
+  getToolbarStatus: () => ipcRenderer.invoke('getToolbarStatus') as Promise<ToolbarStatus>,
+  onSyncToolbarStatus: (callback: (status: ToolbarStatus) => void) => {
+    ipcRenderer.on('sync-toolbar-status', (_event, status) => {
+      callback(status)
+    })
+  },
+  removeSyncToolbarStatusListener: () => {
+    ipcRenderer.removeAllListeners('sync-toolbar-status')
+  },
 
   // Listen for window opacity adjustments triggered by shortcuts
   onAdjustOpacity: (callback: (delta: number) => void) => {
@@ -136,16 +147,20 @@ const api = {
     ipcRenderer.removeAllListeners('scroll-page-down')
   },
 
-  // Select the directory 对话模式's conversations are saved to
+  // Select the directory conversations are saved to
   selectConversationDir: () =>
     ipcRenderer.invoke('selectConversationDir') as Promise<string | null>,
 
-  // 对话模式: main owns the conversation, the page takes a snapshot and follows the events
+  // Main owns the conversation, the page takes a snapshot and follows the events
   getConversationSnapshot: () =>
     ipcRenderer.invoke('conversation:get-snapshot') as Promise<ConversationSnapshot>,
   requestHint: () => ipcRenderer.invoke('conversation:request-hint'),
   stopHints: () => ipcRenderer.invoke('conversation:stop-hints'),
   clearConversation: () => ipcRenderer.invoke('conversation:clear'),
+  setConversationNote: (text: string) => ipcRenderer.invoke('conversation:set-note', text),
+  // Enter in the note box; true when a bare number answered a 「可确认」 and the box should empty
+  submitConversationNote: () =>
+    ipcRenderer.invoke('conversation:submit-note') as Promise<boolean>,
   onConversationUtterance: (callback: (utterance: Utterance) => void) => {
     ipcRenderer.on('conversation-utterance', (_event, utterance: Utterance) => callback(utterance))
   },

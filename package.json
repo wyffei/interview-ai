@@ -28,12 +28,11 @@
     "url": "git+https://github.com/ooboqoo/interview-coder-cn.git"
   },
   "keywords": [
-    "解题助手",
+    "语音面试助手",
     "面试",
-    "在线考试",
-    "截屏",
-    "coding interview",
-    "LeetCode"
+    "语音识别",
+    "复盘库",
+    "interview"
   ],
   "author": "Gavin Wang<ooboqoo@gmail.com>",
   "license": "CC BY-NC 4.0",

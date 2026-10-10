@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/select'
 import { useSettingsStore, type HintMode } from '@/lib/store/settings'
 import { KnowledgeField } from '../KnowledgeField'
-import { ModeProfileSelect } from '../ModeProfileSelect'
+import { ProfileSelect } from '../ProfileSelect'
 import { SceneEditor } from '../SceneEditor'
 import { Advanced, Field, SaveDirField, SettingsCard } from '../components'
 
@@ -48,7 +48,7 @@ export function ConversationSection({
       {!dashscopeApiKey && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-600/40 bg-amber-100/80 px-4 py-2 text-sm text-amber-900">
           <TriangleAlert className="h-4 w-4 shrink-0" />
-          对话模式靠语音识别听对方说话，需要先填写百炼平台 API Key
+          出提示要靠语音识别听对方说话，需要先填写百炼平台 API Key
           <button
             className="ml-auto text-blue-700 hover:underline cursor-pointer"
             onClick={onOpenVoice}
@@ -60,7 +60,7 @@ export function ConversationSection({
 
       <SettingsCard Icon={MessagesSquare} title="AI 与提示词">
         <div className="space-y-4">
-          <ModeProfileSelect onEdit={onEditProfile} />
+          <ProfileSelect onEdit={onEditProfile} />
           <SceneEditor />
           <KnowledgeField onOpen={onOpenKnowledge} />
         </div>
@@ -70,7 +70,7 @@ export function ConversationSection({
         <div className="space-y-4">
           <Field
             label="出提示方式"
-            note="自动：对方说完一句话就出提示，快捷键可随时干预；手动：只在按「出提示」快捷键时出。对话页面底部和快捷键也能随时切换"
+            note="自动：对方说完一句话就出提示，快捷键可随时干预；手动：只在按「出提示」快捷键时出。悬浮工具条和快捷键也能随时切换"
           >
             <Select
               value={conversationHintMode}

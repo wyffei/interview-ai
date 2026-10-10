@@ -20,7 +20,6 @@ export function AppearanceSection() {
     opacity,
     resizable,
     showOverlayToolbar,
-    hideShortcutHints,
     toolbarHoverDelay,
     hideDockIcon,
     updateSetting
@@ -71,14 +70,6 @@ export function AppearanceSection() {
             />
           </Field>
 
-          <Field label="隐藏快捷键提醒" note="开启后，主界面底部不再显示各操作的快捷键">
-            <Switch
-              className="scale-y-90"
-              checked={hideShortcutHints}
-              onCheckedChange={(checked) => updateSetting('hideShortcutHints', checked)}
-            />
-          </Field>
-
           <Field
             label="鼠标穿透"
             note="开启后鼠标点击会穿到窗口背后，可直接操作背后的编辑器；不需要悬浮工具条也能使用"
@@ -94,7 +85,7 @@ export function AppearanceSection() {
 
           <Field
             label="悬浮工具条"
-            note="在主窗口上方显示一排按钮，可用鼠标点击替代快捷键操作，按钮随模式变化，详见帮助中心"
+            note="在主窗口上方显示一排按钮，可用鼠标点击替代快捷键操作，详见帮助中心"
           >
             <Switch
               className="scale-y-90"

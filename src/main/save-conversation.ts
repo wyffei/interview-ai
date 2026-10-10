@@ -6,7 +6,7 @@ import { settings } from './settings'
 import { NO_REPLY, type HintCard, type Utterance } from '../shared/conversation'
 
 /**
- * 对话模式's record on disk: one Markdown file per conversation, named after
+ * The conversation's record on disk: one Markdown file per conversation, named after
  * when it began and rewritten whole as it grows, so the file always holds the
  * entire conversation so far.
  */

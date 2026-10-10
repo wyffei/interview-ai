@@ -1,7 +1,7 @@
 import { app, dialog, ipcMain } from 'electron'
 import type { ApiProfile } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
-import { setToolbarOpacity, syncToolbarSettings } from './toolbar-window'
+import { setToolbarOpacity, syncToolbarSettings, updateToolbarStatus } from './toolbar-window'
 
 ipcMain.handle('getAppVersion', () => {
   return app.getVersion()
@@ -25,6 +25,9 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   for (const listener of settingsListeners) listener(previous)
   if ('hideDockIcon' in _settings) {
     applyDockVisibility(settings.hideDockIcon)
+  }
+  if ('conversationHintMode' in _settings) {
+    updateToolbarStatus({ hintMode: settings.conversationHintMode })
   }
   if ('opacity' in _settings) {
     setToolbarOpacity(settings.opacity)
@@ -80,13 +83,13 @@ export const settings = {
   conversationProfileId: '',
   /** The system prompt, from the renderer's active scene */
   conversationPrompt: '',
-  /** 对话模式: hint on every finished sentence (`auto`) or only on the shortcut */
+  /** Hint on every finished sentence (`auto`) or only on the shortcut */
   conversationHintMode: 'auto' as HintMode,
-  /** 对话模式: silence (ms) that ends a sentence in the recogniser */
+  /** Silence (ms) that ends a sentence in the recogniser */
   conversationSilenceMs: 800,
-  /** 对话模式: a finished sentence shorter than this triggers no automatic hint */
+  /** A finished sentence shorter than this triggers no automatic hint */
   conversationMinChars: 4,
-  /** 对话模式: keep each conversation as a Markdown file, see save-conversation.ts */
+  /** Keep each conversation as a Markdown file, see save-conversation.ts */
   conversationAutoSave: false,
   /** Where the conversations go; blank means Documents/InterviewCoder */
   conversationSaveDir: '',
@@ -110,7 +113,7 @@ export type AppSettings = typeof settings
  * The profile hints are requested with. Until the renderer has synced its list
  * (or with only `.env` configured) the flat fields are all there is.
  */
-export function getModeProfile(): ApiProfile {
+export function getHintProfile(): ApiProfile {
   const profile = settings.apiProfiles.find((p) => p.id === settings.conversationProfileId)
   if (profile) return profile
   return {

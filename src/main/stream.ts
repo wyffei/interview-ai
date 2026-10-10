@@ -1,6 +1,6 @@
 /**
- * Consuming an AI text stream for 对话模式's hints (conversation.ts), which maps
- * the outcome to its own IPC events.
+ * Consuming an AI text stream for a hint (conversation.ts), which maps the
+ * outcome to its own IPC events.
  */
 
 /**

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 interface AppState {
   ignoreMouse: boolean
-  /** 对话模式's page is on screen; the toolbar window shows that mode's buttons */
+  /** The conversation page is on screen */
   inConversationPage: boolean
 }
 

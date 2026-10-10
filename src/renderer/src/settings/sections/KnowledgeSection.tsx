@@ -25,7 +25,6 @@ import { cn } from '@/lib/utils'
 import {
   formatChars,
   formatTokens,
-  isEnabled,
   knowledgeUsage,
   useKnowledgeDocs,
   KNOWLEDGE_CHAR_LIMIT,
@@ -78,9 +77,9 @@ export function KnowledgeSection() {
   }
 
   const toggleEnabled = async (doc: KnowledgeDoc) => {
-    const modes: KnowledgeDoc['modes'] = isEnabled(doc) ? [] : ['conversation']
-    replaceDoc({ ...doc, modes })
-    const saved = await window.api.updateKnowledge(doc.id, { modes })
+    const disabled = !doc.disabled
+    replaceDoc({ ...doc, disabled })
+    const saved = await window.api.updateKnowledge(doc.id, { disabled })
     if (saved) replaceDoc(saved)
   }
 
@@ -133,11 +132,14 @@ export function KnowledgeSection() {
       <SettingsCard Icon={LibraryBig} title="资料库">
         <p className="-mt-2 mb-4 text-xs font-light">
           导入简历、准备好的问答、笔记等资料，AI
-          出提示时会优先参考；用不到的资料可以先停用。资料只保存在本机，但会随请求发给你配置的 AI 平台
+          出提示时会优先参考；用不到的资料可以先停用。资料只保存在本机，但会随请求发给你配置的 AI
+          平台
         </p>
         <p className="-mt-2 mb-4 text-xs font-light">
-          简历、JD 这类短资料选「整份发送」；复盘库、题库这类长资料选「按题检索」：按对方的问题查找，
-          有现成回答就直接显示原文（不等 AI），否则只把相关的几条发给 AI 改写。Word 里请用「标题 1/2/3」样式标出每道题
+          简历、JD
+          这类短资料选「整份发送」；复盘库、题库这类长资料选「按题检索」：按对方的问题查找，
+          有现成回答就直接显示原文（不等 AI），否则只把相关的几条发给 AI 改写。Word 里请用「标题
+          1/2/3」样式标出每道题
         </p>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -248,7 +250,7 @@ function DocRow({
   const search = doc.use === 'search'
   const meta = [doc.source && `来自 ${doc.source}`, formatChars(doc.chars)]
   if (search) meta.push(`切成 ${doc.sections ?? 0} 条`)
-  const enabled = isEnabled(doc)
+  const enabled = !doc.disabled
   if (!enabled) meta.push('已停用')
   // Plain text without headings (pasted, or a .docx imported before headings were kept)
   const fewSections = search && (doc.sections ?? 0) < 3
@@ -353,10 +355,7 @@ function UsageMeter({ docs }: { docs: KnowledgeDoc[] }) {
               ? `${count} 份 · ${formatChars(chars)}（${formatTokens(tokens)}）`
               : '不带整份资料'}
             {searched > 0 && ` + ${searched} 份按题检索`}
-            <span className="text-gray-500">
-              {' '}
-              / 建议不超过 {formatChars(KNOWLEDGE_CHAR_LIMIT)}
-            </span>
+            <span className="text-gray-500"> / 建议不超过 {formatChars(KNOWLEDGE_CHAR_LIMIT)}</span>
           </span>
         </div>
         <div className="h-1.5 overflow-hidden rounded-full bg-black/10">

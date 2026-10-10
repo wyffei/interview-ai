@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron'
 import type { ModelMessage } from 'ai'
 import { getHintStream } from './ai'
 import { searchKnowledge } from './knowledge'
-import { settings, getModeProfile, onSettingsChanged } from './settings'
+import { settings, getHintProfile, onSettingsChanged } from './settings'
 import { saveConversation, saveConversationSync } from './save-conversation'
 import { consumeStream, extractErrorMessage } from './stream'
 import { isTranscriptionRunning, onConversationSentence, onTranscriptionEnd } from './transcription'
@@ -16,19 +16,19 @@ import {
 import { entryLabel, type ReviewEntry, type ReviewLookup } from '../shared/review-search'
 
 /**
- * 对话模式: what the other side of a call says, sentence by sentence, and the
- * hints written for it. Main owns both so that leaving the page (for the
- * settings, say) loses nothing; the renderer asks for a snapshot when it comes
- * back and follows the events after that.
+ * What the other side of a call says, sentence by sentence, and the hints
+ * written for it. Main owns both so that leaving the page (for the settings,
+ * say) loses nothing; the renderer asks for a snapshot when it comes back and
+ * follows the events after that.
  *
  * Hints are asked for in two ways:
  * - automatically, when a sentence ends (`conversationHintMode: 'auto'`). The
  *   request goes out at once rather than after a grace period; if the other
  *   side turns out to still be talking, the hint is withdrawn (`waiting`) and
  *   written again into the same card once they finish.
- * - by the shortcut or the button, in either mode: it covers everything not yet
- *   hinted, including a sentence still being spoken, or rewrites the last hint
- *   when nothing new was said.
+ * - by the shortcut or the button, automatic or not: it covers everything not
+ *   yet hinted, including a sentence still being spoken, or rewrites the last
+ *   hint when nothing new was said.
  *
  * Before asking the model, the 资料库's searched docs (复盘库) are searched with
  * what the hint is for: a prepared answer to that very question is shown at
@@ -60,6 +60,12 @@ let startedAt = 0
 let saveTimer: NodeJS.Timeout | null = null
 /** The last save failed and the user was told; not again until one succeeds */
 let saveFailed = false
+/**
+ * What the user typed about this interview: a company name the recogniser
+ * keeps getting wrong, the project being asked about. Goes along with every
+ * request and steers the 复盘库 search; a clear (the next interview) drops it.
+ */
+let note = ''
 
 interface HintStream {
   controller: AbortController
@@ -186,7 +192,7 @@ function onSentenceGrowing(utterance: Utterance) {
 }
 
 function onSentenceFinished(utterance: Utterance) {
-  // A withdrawn hint was promised: finish it whatever the mode is by now
+  // A withdrawn hint was promised: finish it whatever the hint mode is by now
   const waiting = waitingCard()
   if (waiting) {
     void startHint(waiting, waiting.fromId, utterance.id, 'auto')
@@ -269,14 +275,51 @@ function materialBlock(lookup: ReviewLookup): string {
 }
 
 /**
+ * A hint written again after an earlier version: for a different take
+ * (「换一个角度」), with the user's answer to the 「（可确认：……）」 line the
+ * earlier version ended with, or for what the user just added to the note.
+ */
+interface Rewrite {
+  previous: string
+  /** 「1（软体臂折纸项目）」: the option the user picked */
+  answer?: string
+  /** The note was just submitted: write it again with that in mind */
+  noted?: boolean
+}
+
+/** The line a hint ends with when the question was ambiguous; the prompts ask for it */
+const CONFIRM_LINE = /（可确认：([\s\S]*?)）\s*$/
+
+/**
+ * 「1. 问的是A项目 2. 问的是B项目」 → 1 → 问的是A项目. Unnumbered, as prompts
+ * written before the numbering ask it: 「问的是A项目还是B项目？」 → 1 → 问的是A项目
+ */
+function confirmOptions(point: string): Map<string, string> {
+  const tidy = (text: string) => text.replace(/[\s，,；;？?。]+$/, '').trim()
+  const options = new Map<string, string>()
+  for (const [, n, text] of point.matchAll(/(\d)\s*[.、．]\s*([\s\S]*?)(?=\s*\d\s*[.、．]|$)/g)) {
+    if (tidy(text)) options.set(n, tidy(text))
+  }
+  if (options.size === 0) {
+    point
+      .split('还是')
+      .map(tidy)
+      .forEach((text, i, all) => {
+        if (all.length > 1 && text) options.set(String(i + 1), text)
+      })
+  }
+  return options
+}
+
+/**
  * The request for one hint: 复盘库 material found for it, earlier sentences as
- * context, then the ones the hint is for. `previous` asks for a different take
- * on an earlier hint.
+ * context, then the ones the hint is for, and what to do about its earlier
+ * version when it is written again.
  */
 function buildMessages(
   fromId: number,
   toId: number,
-  previous?: string,
+  rewrite?: Rewrite,
   lookup?: ReviewLookup | null
 ): ModelMessage[] {
   const context: string[] = []
@@ -296,11 +339,26 @@ function buildMessages(
   const material = lookup ? materialBlock(lookup) : ''
   if (material) parts.push(material)
   if (context.length > 0) parts.push(`【之前对方说过的话】\n${context.join('\n')}`)
+  if (note.trim()) {
+    parts.push(
+      `【用户补充的说明】\n${note.trim()}\n（用户在面试中手动补充的关键词或说明，例如对方的公司、正在问的是哪个项目。语音识别可能听错专有名词，理解对方的话和作答时以这里为准）`
+    )
+  }
   parts.push(
     `【对方刚才说的话】${unfinished ? '（还没说完）' : ''}\n${focus.map((u) => u.text).join('\n')}`
   )
-  if (previous?.trim()) {
-    parts.push(`【上一版提示】\n${previous}\n\n请换一个角度重新给出提示，不要重复上一版。`)
+  if (rewrite?.answer) {
+    parts.push(
+      `【上一版提示】\n${rewrite.previous}\n\n用户对上一版最后「可确认」一项的回答是：${rewrite.answer}（数字指其中列出的第几个可能）。请按这个意思重新给出提示，不要再列出这个确认点。`
+    )
+  } else if (rewrite?.noted && rewrite.previous.trim() && note.trim()) {
+    parts.push(
+      `【上一版提示】\n${rewrite.previous}\n\n用户刚补充了上面的说明，请结合说明重新给出提示。`
+    )
+  } else if (rewrite?.previous.trim()) {
+    parts.push(
+      `【上一版提示】\n${rewrite.previous}\n\n请换一个角度重新给出提示，不要重复上一版。`
+    )
   }
   return [{ role: 'user', content: parts.join('\n\n') }]
 }
@@ -311,7 +369,7 @@ async function startHint(
   fromId: number,
   toId: number,
   source: HintCard['source'],
-  previous?: string
+  rewrite?: Rewrite
 ): Promise<void> {
   stopStream(card.id)
   Object.assign(card, {
@@ -330,11 +388,12 @@ async function startHint(
   const generation = (generations.get(card.id) ?? 0) + 1
   generations.set(card.id, generation)
 
-  const lookup = searchKnowledge('conversation', focusText(fromId, toId))
+  // The picked option names what the question is about (a project, say), so it steers the search too
+  const lookup = searchKnowledge(focusText(fromId, toId), `${note} ${rewrite?.answer ?? ''}`)
   if (lookup) card.review = reviewOf(lookup)
   // A prepared answer to this very question: shown as is, no model and no wait.
-  // Not for 「换一个角度」, which asks for something other than what is there
-  if (lookup?.tier === 'direct' && !previous) {
+  // Not for a rewrite, which asks for something other than what is there
+  if (lookup?.tier === 'direct' && !rewrite) {
     card.text = clip(lookup.matches[0].entry.body, DIRECT_CHARS)
     card.status = 'done'
     card.latencyMs = 0
@@ -343,16 +402,16 @@ async function startHint(
   }
   publishHint(card)
 
-  if (!getModeProfile().apiKey) {
+  if (!getHintProfile().apiKey) {
     card.status = 'error'
-    card.error = '对话模式使用的 AI 配置未填写 API Key，请到「设置 → AI 模型」填写'
+    card.error = '出提示使用的 AI 配置未填写 API Key，请到「设置 → AI 模型」填写'
     publishHint(card)
     return
   }
 
   const stream: HintStream = { controller: new AbortController(), startedAt: Date.now() }
   streams.set(card.id, stream)
-  const messages = buildMessages(fromId, toId, previous, lookup)
+  const messages = buildMessages(fromId, toId, rewrite, lookup)
   const outcome = await consumeStream(
     (signal) => getHintStream(messages, signal),
     stream.controller,
@@ -409,10 +468,54 @@ export function requestHint(): void {
   }
   const last = hints.at(-1)
   if (last) {
-    void startHint(last, last.fromId, last.toId, 'manual', last.text)
+    void startHint(last, last.fromId, last.toId, 'manual', { previous: last.text })
     return
   }
   send('conversation-notice', '还没有识别到对方说话')
+}
+
+/**
+ * Enter in the note box. A bare number answers the 「（可确认：……）」 line of
+ * the latest hint that ends with one: a new card answers the same question for
+ * the option picked, and the number is dropped from the note (it means nothing
+ * to the next question). Anything else writes a new card for what is not yet
+ * hinted, else for the last hint's question with the note in mind.
+ * Returns whether the note was used up as such an answer.
+ */
+export function submitNote(): boolean {
+  // Unlike the shortcut, a hint already on screen is never written over: the
+  // new take goes on a card of its own, so the two can be compared
+  const fresh = (fromId: number, toId: number, rewrite?: Rewrite) =>
+    void startHint(createCard(fromId, toId), fromId, toId, 'manual', rewrite)
+
+  const choice = note.trim()
+  const confirm = /^\d$/.test(choice)
+    ? [...hints].reverse().find((c) => c.status === 'done' && CONFIRM_LINE.test(c.text))
+    : undefined
+  if (confirm) {
+    const option = confirmOptions(confirm.text.match(CONFIRM_LINE)![1]).get(choice)
+    note = ''
+    fresh(confirm.fromId, confirm.toId, {
+      previous: confirm.text,
+      answer: option ? `${choice}（${option}）` : choice
+    })
+    return true
+  }
+
+  const latest = utterances.at(-1)
+  const waiting = waitingCard()
+  const last = hints.at(-1)
+  if (waiting) {
+    // Withdrawn, so there is nothing on it to keep
+    void startHint(waiting, waiting.fromId, Math.max(waiting.toId, latest?.id ?? 0), 'manual')
+  } else if (latest && latest.id > hintedUpTo) {
+    fresh(hintedUpTo + 1, latest.id)
+  } else if (last) {
+    fresh(last.fromId, last.toId, { previous: last.text, noted: true })
+  } else {
+    send('conversation-notice', '还没有识别到对方说话')
+  }
+  return false
 }
 
 /** Stop every hint being written, and give up on the withdrawn ones */
@@ -439,6 +542,7 @@ export function clearConversation(): void {
   nextHintId = 1
   hintedUpTo = 0
   startedAt = 0
+  note = ''
   send('conversation-cleared')
 }
 
@@ -446,7 +550,8 @@ function getSnapshot(): ConversationSnapshot {
   return {
     utterances: utterances.map((u) => ({ ...u })),
     hints: hints.map((card) => ({ ...card })),
-    listening: isTranscriptionRunning()
+    listening: isTranscriptionRunning(),
+    note
   }
 }
 
@@ -486,3 +591,8 @@ ipcMain.handle('conversation:get-snapshot', () => getSnapshot())
 ipcMain.handle('conversation:request-hint', () => requestHint())
 ipcMain.handle('conversation:stop-hints', () => stopHints())
 ipcMain.handle('conversation:clear', () => clearConversation())
+// Applies from the next request; one already streaming keeps what it was sent
+ipcMain.handle('conversation:set-note', (_event, text: string) => {
+  note = String(text ?? '').slice(0, 200)
+})
+ipcMain.handle('conversation:submit-note', () => submitNote())
