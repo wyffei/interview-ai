@@ -30,6 +30,7 @@ Key capabilities:
 src/
 ├── main/                    # Electron main process
 │   ├── index.ts             # App entry: lifecycle, error handling, app.whenReady()
+│   ├── legacy-name.ts       # Imported first: adopts the userData folder of the old package name (interview-coder-cn)
 │   ├── main-window.ts       # BrowserWindow creation (frameless, transparent, always-on-top)
 │   ├── toolbar-window.ts    # Overlay toolbar window: bounds/visibility/opacity glued to main window
 │   ├── shortcuts.ts         # Global shortcuts: window show/hide and top-most handling, click-through, the actions they and the toolbar trigger
@@ -47,7 +48,7 @@ src/
 │   ├── save-conversation.ts # The conversation → one Markdown file per conversation
 │   ├── transcription.ts     # DashScope WebSocket real-time speech-to-text, each sentence revision handed to conversation.ts
 │   ├── window-resize.ts     # Cursor-tracking resize for the frameless windows
-│   ├── auto-updater.ts      # electron-updater (non-macOS only)
+│   ├── auto-updater.ts      # New releases, announced in the window: Windows installs via electron-updater, macOS links to the page
 │   └── index.d.ts           # global.mainWindow type declaration
 ├── preload/
 │   ├── index.ts             # contextBridge API: exposes window.api to renderer
@@ -58,6 +59,7 @@ src/
 │   ├── briefing.ts          # Briefing (company, JD, 行业卡片) and BriefingRoute types
 │   ├── knowledge.ts         # KnowledgeDoc type (+ `use`: full / search), the suggested limit, estimateTokens()
 │   ├── review-search.ts     # 复盘库 search: material cut into entries by heading, title matching, BM25, direct / adapt / none tiers; no imports
+│   ├── update.ts            # AvailableUpdate: a newer release main found, and how far its download got
 │   └── conversation.ts      # Conversation types (Utterance, HintCard, HintMode) + countMeaningfulChars()
 └── renderer/
     ├── index.html            # SPA entry
@@ -90,6 +92,7 @@ src/
         │   ├── Shortcuts.tsx
         │   ├── OverlayToolbar.tsx  # Toolbar section (buttons + meanings + shortcuts)
         │   ├── FAQ.tsx
+        │   ├── UpdateNotice.tsx    # 发现新版本 card in 简介: download / install on Windows, release page on macOS
         │   └── components/index.tsx  # HelpSection wrapper
         ├── components/
         │   ├── AppHeader.tsx          # Draggable title bar: title, scene picker · model, settings / help / close
@@ -163,6 +166,7 @@ src/
 - `initShortcuts` / `getShortcuts` / `updateShortcuts` — shortcut management
 - `triggerAction` / `setToolbarVisible` — overlay toolbar: run a shortcut action, toggle the window
 - `selectConversationDir` — folder picker for saving conversations
+- `update:get-status` / `update:download` / `update:install` — a newer release; the last two are Windows only
 - `window-resize-start` / `window-resize-stop` (`send`, not `invoke`) — begin/end a cursor-tracked window resize
 - `start-transcription` / `stop-transcription` — speech transcription lifecycle; start takes `{ maxSentenceSilence }`
 - `conversation:get-snapshot` / `conversation:request-hint` / `conversation:stop-hints` / `conversation:request-clear` / `conversation:clear` / `conversation:set-note` / `conversation:submit-note` / `conversation:toggle-speaker` / `conversation:set-utterance-speaker` — the conversation
@@ -182,6 +186,7 @@ src/
 - `sync-toolbar-settings` — push toolbar-only settings (hover dwell) into the toolbar window
 - `sync-toolbar-status` — push listening / hint mode / 手机面试模式 / speaker into the toolbar window, whose buttons show them (`getToolbarStatus` fetches it on load)
 - `transcription-error` / `transcription-stopped` — transcription events
+- `update-status` — a newer release was found, or its download moved on
 
 ### Zustand Stores
 
@@ -191,9 +196,11 @@ src/
 | `useShortcutsStore` | `lib/store/shortcuts.ts` | Yes (v5) | `shortcuts` (action → key mapping with categories); `merge` adds new default actions on every load and drops removed ones, so a new shortcut needs no `version` bump |
 | `useTranscriptionStore` | `lib/store/transcription.ts` | No | `isTranscribing` |
 | `useConversationStore` | `lib/store/conversation.ts` | No | `utterances`, `hints`, `errorMessage`, `focusedHintId` |
-| `useAppStore` | `lib/store/app.ts` | No | `ignoreMouse`, `inConversationPage` |
+| `useAppStore` | `lib/store/app.ts` | No | `ignoreMouse`, `inConversationPage`, `update` (a newer release, from main) |
 
 The two persisted stores go through `fileStorage` (`lib/store/file-storage.ts`): a file per store under `userData/stores/`, written by main (`store-file.ts`, read with `sendSync` so hydration stays synchronous), mirrored into localStorage, which is adopted the first time no file exists. localStorage alone is per origin, so the dev server and the installed app each had their own settings. An update must never rewrite what the user set: new keys take their defaults, and `migrate` only reshapes a key whose shape changed.
+
+userData is `%APPDATA%\<package name>` (`~/Library/Application Support/<package name>`), for the dev server and the installed app alike, so the package `name` (`interview-ai`) is the folder holding every setting, the 资料库 and the 面试准备. It was `interview-coder-cn` until 1.2.0, which is also upstream's (识屏 Shiping) old name: Shiping renames a folder by that name to its own on start, so a user who ran it lost this app's data. `legacy-name.ts` moves the old folder over on the first start under the new name. Never change the package `name` without moving the folder the same way.
 
 Settings are bidirectionally synced: renderer persists to localStorage, and on mount syncs to main process via `updateAppSettings()`. Main process `.env` values serve as initial defaults only.
 
@@ -310,11 +317,20 @@ Before an interview the user enters the company and the JD on `/briefing` (「�
 - Global shortcuts registered via Electron's `globalShortcut` API
 - Renderer stores shortcut config in Zustand (persisted); sends to main on init
 - On Windows, `Alt`-based shortcuts also register `Ctrl+Alt` variant for compatibility
+- Windows auto-repeats a held global shortcut, so `isKeyRepeat()` drops a press within 600ms of the last one; only the stepping actions (move, page, opacity, `REPEATABLE_ACTIONS`) repeat. Toolbar clicks (`triggerAction`) are not filtered
 - Shortcut actions are string-keyed callbacks in `shortcuts.ts`
 - Default shortcuts use `platformAlt` (`Alt` on macOS, `CommandOrControl` on Windows)
 - New actions also need a label in `settings/CustomShortcuts.tsx` and a description in `help/Shortcuts.tsx`
 - Categories: `Window Management`, `Conversation` (hints), `AI` (stop, profile, scene, listening), `Navigation`, `Window Movement`. Only the key of a stored binding is the user's; `merge` takes the category from the code and drops removed actions
 - Actions acting on the page check `state.inConversationPage` (`state.ts`) and are answered by `useMainPage()`
+
+### Update Notice
+
+`src/main/auto-updater.ts` checks at startup and every 6 hours, and reports a newer release with `update-status`. It is never a native dialog or a system notification: those are drawn outside content protection, so one popping up mid-interview would show on the shared screen
+- Shown inside the main window only: a 「有新版本」 badge after the version in `AppHeader`, leading to the help page, where `UpdateNotice` holds the details and the button
+- Windows: electron-updater with `autoDownload = false`. The user starts the download and the restart; a finished download also installs on quit
+- macOS: no Apple signature, so no Squirrel.Mac. Main follows the redirect of `releases/latest/download/latest.yml` with Electron's `net` (system proxy; not the REST API, which rate-limits) to find the Latest tag, and the card links to its page
+- Both follow Latest only: a draft or pre-release reaches no one until it is published as Latest. A failed check stays silent
 
 ### Mouse Click-through
 
@@ -337,12 +353,17 @@ Before an interview the user enters the company and the JD on `/briefing` (「�
 npm install          # Install dependencies
 npm run dev          # Start in dev mode (electron-vite dev)
 npm run build        # Typecheck + build (electron-vite build)
+npm test             # Unit tests (node:test, tests/*.test.cjs)
 npm run build:mac    # Build macOS distributable
 npm run build:win    # Build Windows distributable
 npm run typecheck    # Run TypeScript type checking (node + web)
 npm run lint         # Run ESLint
 npm run format       # Run Prettier
 ```
+
+### Tests
+
+`tests/` (not shipped) runs the checked-in TypeScript under `node:test` with no extra dependency: `load-source.cjs` transpiles a file with `typescript` and resolves its relative imports, while a test passes mocks for `electron` and any module it wants replaced. Covered so far: the settings store across restarts (file / localStorage, new keys take defaults, scenes), shortcut key repeat, the update notice on both platforms, the 复盘库 search tiers, request headers and the .docx / Word XML conversion.
 
 ### Configuration
 
@@ -386,7 +407,7 @@ These are read by dotenv in the main process and merged with renderer-side setti
 
 8. **Window movement**: The window can be moved via keyboard shortcuts in 200px steps (up/down/left/right), and resized by dragging its edges (see Window Resizing).
 
-9. **macOS auto-update is disabled**: `publish: null` in electron-builder.yml for mac target. Auto-update only works on Windows.
+9. **macOS has no auto-update**: `publish: null` in electron-builder.yml for the mac target. It only gets the in-window notice linking to the release page (see Update Notice).
 
 10. **macOS and Windows only**: Linux is not a supported or built target.
 

@@ -28,6 +28,35 @@ enum ShortcutStatus {
 const MOVE_STEP = 200
 const shortcuts: Record<string, Shortcut> = {}
 
+/**
+ * Windows repeats a held global shortcut at the keyboard's auto-repeat rate:
+ * Chromium registers it without MOD_NOREPEAT, and the callback cannot tell a
+ * repeat from a press. So a press within KEY_REPEAT_GAP of the previous one is
+ * taken as a repeat and dropped, and it extends the gap: holding the keys, or a
+ * key stuck down, fires the action once. The gap outlasts Windows' default
+ * 500ms delay before the first repeat. Only actions that step something repeat.
+ */
+const KEY_REPEAT_GAP = 600
+const REPEATABLE_ACTIONS = new Set([
+  'moveMainWindowUp',
+  'moveMainWindowDown',
+  'moveMainWindowLeft',
+  'moveMainWindowRight',
+  'pageUp',
+  'pageDown',
+  'increaseOpacity',
+  'decreaseOpacity'
+])
+const lastShortcutAt: Record<string, number> = {}
+
+function isKeyRepeat(action: string): boolean {
+  if (REPEATABLE_ACTIONS.has(action)) return false
+  const now = performance.now()
+  const last = lastShortcutAt[action]
+  lastShortcutAt[action] = now
+  return last !== undefined && now - last < KEY_REPEAT_GAP
+}
+
 const FRONT_REASSERT_DURATION = 8000
 const FRONT_REASSERT_INTERVAL = 100
 const FRONT_RELATIVE_LEVEL = 100
@@ -431,8 +460,11 @@ function registerShortcut(action: string, key: string) {
 
   const keysToRegister = getShortcutRegistrationKeys(key)
   const registeredKeys: string[] = []
+  const onPress = () => {
+    if (!isKeyRepeat(action)) callbacks[action]?.()
+  }
   keysToRegister.forEach((shortcutKey) => {
-    if (globalShortcut.register(shortcutKey, callbacks[action])) {
+    if (globalShortcut.register(shortcutKey, onPress)) {
       registeredKeys.push(shortcutKey)
     }
   })

@@ -17,6 +17,7 @@ import { HelpSection } from './components'
 import { Shortcuts } from './Shortcuts'
 import { OverlayToolbarHelp } from './OverlayToolbar'
 import { FAQ } from './FAQ'
+import { UpdateNotice } from './UpdateNotice'
 
 export default function HelpPage() {
   const [appVersion, setAppVersion] = useState('')
@@ -43,6 +44,7 @@ export default function HelpPage() {
       <div id="app-content" className="flex flex-col gap-4 p-8">
         {/* Introduction */}
         <HelpSection Icon={Info} title="简介" description={appVersion && `当前版本 v${appVersion}`}>
+          <UpdateNotice />
           <p className="text-gray-700">
             欢迎使用语音面试助手！在语音面试中，它听取对方说的话，结合您的简历和复盘库，
             实时给出回答要点。您可以访问上游项目{' '}

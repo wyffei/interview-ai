@@ -8,6 +8,7 @@ import BriefingPage from '@/briefing'
 import { OverlayToolbar } from '@/toolbar/OverlayToolbar'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
+import { useAppStore } from '@/lib/store/app'
 import { getCloneableFields } from '@/lib/utils'
 import { applyTheme } from '@/lib/theme'
 import { WindowResizeHandles } from '@/components/WindowResizeHandles'
@@ -49,6 +50,14 @@ export default function App() {
       window.api.updateAppSettings(getCloneableFields(settingsStore))
     }
   }, [initialized, settingsStore])
+
+  // A newer release, as main finds it: at startup and every few hours after
+  useEffect(() => {
+    const { setUpdate } = useAppStore.getState()
+    window.api.getUpdateStatus().then(setUpdate)
+    window.api.onUpdateStatus(setUpdate)
+    return () => window.api.removeUpdateStatusListener()
+  }, [])
 
   useEffect(() => {
     console.log('App initShortcuts:', shortcuts) // DEBUG: 检查新键

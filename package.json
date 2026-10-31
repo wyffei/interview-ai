@@ -1,6 +1,6 @@
 {
-  "name": "interview-coder-cn",
-  "version": "1.1.1",
+  "name": "interview-ai",
+  "version": "1.1.2",
   "description": "语音面试 AI 助手：听对话实时出提示，复盘库按题检索",
   "main": "./out/main/index.js",
   "devEngines": {
@@ -15,6 +15,7 @@
     "typecheck:node": "tsc -p tsconfig.node.json",
     "typecheck:web": "tsc -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test": "node --test tests/*.test.cjs",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",

@@ -97,24 +97,25 @@ Pass Chinese or spaces with `--get --data-urlencode 'a=…'`.
 ## Run (human path)
 
 `npm run dev` (README) opens the app with hot reload on your real settings
-(`~/Library/Application Support/interview-coder-cn`). Not used by agents.
+(`~/Library/Application Support/interview-ai`). Not used by agents.
 
 ## Test
 
-There is no unit test suite; these are the checks:
+The checks:
 
 ```bash
 npm run typecheck
+npm test
 npm run lint
 ```
 
-Both exit 0 on a clean tree.
+All exit 0 on a clean tree.
 
 ## Gotchas
 
 - **Settings live in the renderer's localStorage and win over `.env`.** The driver passes
   `--user-data-dir=<fresh dir>` (Electron honors it), so every launch starts from `.env` defaults
-  and the real `~/Library/Application Support/interview-coder-cn` is never read or written.
+  and the real `~/Library/Application Support/interview-ai` is never read or written.
 - **The app reads `.env` itself** (dotenv, cwd = repo root). `MODEL="gpt-5-mini"` there applies
   unless the driver gets `MODEL=`; dotenv never overrides variables already set.
 - **Global shortcuts can't be pressed from Playwright.** `action` calls
