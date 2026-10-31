@@ -1,4 +1,4 @@
-appId: com.electron.app
+appId: com.wyffei.interview-ai
 productName: 语音面试助手
 directories:
   buildResources: build
@@ -14,7 +14,7 @@ asarUnpack:
 win:
   executableName: 语音面试助手
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: interview-ai-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -34,7 +34,7 @@ dmg:
 npmRebuild: false
 publish:
   provider: github
-  owner: ooboqoo
-  repo: interview-coder-cn
+  owner: wyffei
+  repo: interview-ai
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

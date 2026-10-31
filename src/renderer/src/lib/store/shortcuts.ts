@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { isMac, platformAlt } from '../utils/env'
+import { fileStorage } from './file-storage'
 
 export type Shortcut = {
   action: string
@@ -69,6 +70,11 @@ const defaultShortcuts: Record<string, Omit<Shortcut, 'defaultKey'>> = {
   toggleHintMode: {
     action: 'toggleHintMode',
     key: `${platformAlt}+Shift+G`,
+    category: 'Conversation'
+  },
+  toggleSpeaker: {
+    action: 'toggleSpeaker',
+    key: `${platformAlt}+Shift+S`,
     category: 'Conversation'
   },
   stopSolutionStream: {
@@ -158,6 +164,7 @@ export const useShortcutsStore = create<ShortcutsStore>()(
     }),
     {
       name: 'interview-coder-shortcuts',
+      storage: fileStorage,
       version: 5,
       migrate: (state: unknown, version: number) => {
         if (!isPersistedShortcutsState(state) || !state.shortcuts) return state as ShortcutsStore

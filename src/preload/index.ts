@@ -5,13 +5,18 @@ import type { AppState } from '../main/state'
 import type { ListModelsOptions, ModelListResult } from '../main/model-list'
 import type { TranscriptionOptions } from '../main/transcription'
 import type { ToolbarStatus } from '../main/toolbar-window'
-import type { ConversationSnapshot, HintCard, Utterance } from '../shared/conversation'
+import type { ConversationSnapshot, HintCard, Speaker, Utterance } from '../shared/conversation'
 import type { KnowledgeDoc, KnowledgeImportResult, KnowledgePatch } from '../shared/knowledge'
+import type { Briefing, BriefingChunkKind, BriefingRoute } from '../shared/briefing'
 
 // Custom APIs for renderer
 const api = {
   // Get the installed app version (package.json version at build time)
   getAppVersion: () => ipcRenderer.invoke('getAppVersion') as Promise<string>,
+  // The renderer's persisted stores, kept as files by main (see main store-file.ts)
+  readStore: (name: string) => ipcRenderer.sendSync('store:get', name) as string | null,
+  writeStore: (name: string, value: string) => ipcRenderer.send('store:set', name, value),
+  removeStore: (name: string) => ipcRenderer.send('store:remove', name),
   // Get app settings
   getAppSettings: () => ipcRenderer.invoke('getAppSettings'),
   // Update app settings
@@ -67,8 +72,11 @@ const api = {
       | 'cycleScene'
       | 'generateHint'
       | 'toggleHintMode'
+      | 'toggleSpeaker'
   ) => ipcRenderer.invoke('triggerAction', action),
   setToolbarVisible: (visible: boolean) => ipcRenderer.invoke('setToolbarVisible', visible),
+  // The width the toolbar's buttons need; main sizes the window to it until the user drags it
+  fitToolbarWidth: (width: number) => ipcRenderer.invoke('toolbar:fit-width', width),
   // Set click-through from the settings page; returns the state main ended up in
   setIgnoreMouse: (ignore: boolean) =>
     ipcRenderer.invoke('setIgnoreMouse', ignore) as Promise<boolean>,
@@ -156,11 +164,23 @@ const api = {
     ipcRenderer.invoke('conversation:get-snapshot') as Promise<ConversationSnapshot>,
   requestHint: () => ipcRenderer.invoke('conversation:request-hint'),
   stopHints: () => ipcRenderer.invoke('conversation:stop-hints'),
-  clearConversation: () => ipcRenderer.invoke('conversation:clear'),
+  // 「清空对话」: main asks the page first when a 面试准备 would go too
+  requestClearConversation: () => ipcRenderer.invoke('conversation:request-clear'),
+  clearConversation: (keepBriefing: boolean) =>
+    ipcRenderer.invoke('conversation:clear', keepBriefing),
+  onConversationConfirmClear: (callback: () => void) => {
+    ipcRenderer.on('conversation-confirm-clear', () => callback())
+  },
   setConversationNote: (text: string) => ipcRenderer.invoke('conversation:set-note', text),
   // Enter in the note box; true when a bare number answered a 「可确认」 and the box should empty
-  submitConversationNote: () =>
-    ipcRenderer.invoke('conversation:submit-note') as Promise<boolean>,
+  submitConversationNote: () => ipcRenderer.invoke('conversation:submit-note') as Promise<boolean>,
+  // 手机面试模式: flip who is talking now, or correct one sentence
+  toggleSpeaker: () => ipcRenderer.invoke('conversation:toggle-speaker'),
+  setUtteranceSpeaker: (id: number, speaker: Speaker) =>
+    ipcRenderer.invoke('conversation:set-utterance-speaker', id, speaker),
+  onConversationSpeaker: (callback: (speaker: Speaker) => void) => {
+    ipcRenderer.on('conversation-speaker', (_event, speaker: Speaker) => callback(speaker))
+  },
   onConversationUtterance: (callback: (utterance: Utterance) => void) => {
     ipcRenderer.on('conversation-utterance', (_event, utterance: Utterance) => callback(utterance))
   },
@@ -193,6 +213,8 @@ const api = {
       'conversation-hint-chunk',
       'conversation-cleared',
       'conversation-notice',
+      'conversation-speaker',
+      'conversation-confirm-clear',
       'toggle-hint-mode'
     ]) {
       ipcRenderer.removeAllListeners(channel)
@@ -214,6 +236,45 @@ const api = {
   reimportKnowledge: (id: string) =>
     ipcRenderer.invoke('knowledge:reimport', id) as Promise<{ doc?: KnowledgeDoc; error?: string }>,
   removeKnowledge: (id: string) => ipcRenderer.invoke('knowledge:remove', id) as Promise<void>,
+  // 面试准备: the target company / JD and the 行业卡片 researched from them (main briefing.ts)
+  getBriefing: () => ipcRenderer.invoke('briefing:get') as Promise<Briefing>,
+  getBriefingRoute: (webSearch: boolean) =>
+    ipcRenderer.invoke('briefing:route', webSearch) as Promise<BriefingRoute>,
+  // The card, then the self-introduction written as `introRequirements` asks
+  generateBriefing: (company: string, jd: string, webSearch: boolean, introRequirements: string) =>
+    ipcRenderer.invoke('briefing:generate', company, jd, webSearch, introRequirements),
+  regenerateIntro: (introRequirements: string) =>
+    ipcRenderer.invoke('briefing:intro', introRequirements),
+  // The self-introduction as edited or written by hand; blank drops it
+  setIntro: (text: string) => ipcRenderer.invoke('briefing:set-intro', text),
+  // Pick a resume file and keep its text; resolves to why it failed, or null
+  pickResume: () => ipcRenderer.invoke('briefing:pick-resume') as Promise<string | null>,
+  removeResume: () => ipcRenderer.invoke('briefing:remove-resume'),
+  // The company / JD as typed, kept until 清空对话 even if no card is asked for
+  setBriefingInput: (company: string, jd: string) =>
+    ipcRenderer.invoke('briefing:set-input', company, jd),
+  stopBriefing: () => ipcRenderer.invoke('briefing:stop'),
+  clearBriefing: () => ipcRenderer.invoke('briefing:clear'),
+  // Undo 「清空对话」 having taken the card with it
+  restoreBriefing: () => ipcRenderer.invoke('briefing:restore'),
+  onBriefingCleared: (callback: (company: string) => void) => {
+    const listener = (_event: unknown, company: string) => callback(company)
+    ipcRenderer.on('briefing-cleared', listener)
+    return () => void ipcRenderer.removeListener('briefing-cleared', listener)
+  },
+  // Both return an unsubscribe: the hint panel and the 面试准备 page each follow it
+  onBriefingUpdate: (callback: (briefing: Briefing) => void) => {
+    const listener = (_event: unknown, briefing: Briefing) => callback(briefing)
+    ipcRenderer.on('briefing-update', listener)
+    return () => void ipcRenderer.removeListener('briefing-update', listener)
+  },
+  onBriefingChunk: (callback: (kind: BriefingChunkKind, delta: string) => void) => {
+    const listener = (_event: unknown, kind: BriefingChunkKind, delta: string) =>
+      callback(kind, delta)
+    ipcRenderer.on('briefing-chunk', listener)
+    return () => void ipcRenderer.removeListener('briefing-chunk', listener)
+  },
+
   // Where a dropped file lives on disk (`File.path` is gone since Electron 32)
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
 

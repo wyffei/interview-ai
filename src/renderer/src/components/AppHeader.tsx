@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react'
 import { HelpCircle, SettingsIcon, X } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { useAppStore } from '@/lib/store/app'
 import { useSettingsStore } from '@/lib/store/settings'
 
@@ -12,10 +19,9 @@ export function AppHeader() {
   const model = useSettingsStore(
     (state) => state.apiProfiles.find((p) => p.id === state.conversationProfileId)?.model
   )
-  const sceneName = useSettingsStore(
-    (state) => state.scenes.find((s) => s.id === state.conversationSceneId)?.name
-  )
-  const context = [sceneName, model].filter(Boolean).join(' · ')
+  const scenes = useSettingsStore((state) => state.scenes)
+  const sceneId = useSettingsStore((state) => state.conversationSceneId)
+  const setActiveScene = useSettingsStore((state) => state.setActiveScene)
   const [appVersion, setAppVersion] = useState('')
 
   useEffect(() => {
@@ -38,14 +44,32 @@ export function AppHeader() {
         <span className="truncate">语音面试助手</span>
         {appVersion && <span className="shrink-0 text-[10px] opacity-60">v{appVersion}</span>}
       </div>
-      {context && (
-        <span
-          className="min-w-0 truncate pr-2 text-[10px] opacity-60 pointer-events-none"
-          style={{ flex: '0 4 auto', minWidth: 0 }}
-        >
-          {context}
-        </span>
-      )}
+      <div
+        className={`flex min-w-0 items-center gap-1 pr-2 text-[10px] ${ignoreMouse ? 'pointer-events-none' : ''}`}
+        style={{ flex: '0 4 auto', minWidth: 0 }}
+      >
+        {/* Picked straight from the list: stepping through many scenes with the shortcut is slow */}
+        {scenes.length > 0 && (
+          <Select value={sceneId} onValueChange={setActiveScene}>
+            <SelectTrigger
+              size="sm"
+              className="min-w-0 data-[size=sm]:h-6 gap-1 border-none bg-transparent px-1 py-0 text-[10px] opacity-70 shadow-none hover:opacity-100 dark:bg-transparent [-webkit-app-region:no-drag] [&_svg]:size-3"
+            >
+              <SelectValue placeholder="场景" />
+            </SelectTrigger>
+            <SelectContent>
+              {scenes.map((scene) => (
+                <SelectItem key={scene.id} value={scene.id} className="text-xs">
+                  {scene.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {model && (
+          <span className="min-w-0 truncate opacity-60 pointer-events-none">· {model}</span>
+        )}
+      </div>
       <div className={`actions flex items-center ${ignoreMouse ? 'pointer-events-none' : ''}`}>
         <Button
           variant="ghost"

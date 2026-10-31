@@ -27,7 +27,11 @@ export async function startListening(): Promise<void> {
   } catch (err) {
     console.error('Failed to start listening:', err)
     stopAudioCapture()
-    setErrorMessage('启动语音识别失败，请检查系统音频权限')
+    setErrorMessage(
+      useSettingsStore.getState().phoneMode
+        ? '无法打开麦克风，请检查麦克风权限，或到「设置 → 语音」重新选择输入设备'
+        : '启动语音识别失败，请检查系统音频权限'
+    )
   }
 }
 

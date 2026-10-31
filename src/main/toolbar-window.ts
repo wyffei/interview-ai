@@ -1,14 +1,16 @@
 import { join } from 'node:path'
 import { BrowserWindow, ipcMain, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
-import type { HintMode } from '../shared/conversation'
+import type { HintMode, Speaker } from '../shared/conversation'
 
 /** Room for every toolbar button, each an icon with a few characters beside it */
 const TOOLBAR_WIDTH = 800
 const TOOLBAR_HEIGHT = 44
 const TOOLBAR_INSET = 4
 /** Mirrors the renderer's default opacity setting, until the renderer syncs the real one */
-const DEFAULT_OPACITY = 0.8
+const DEFAULT_OPACITY = 0.75
+/** The toolbar's floor, whatever the main window's opacity */
+const TOOLBAR_MIN_OPACITY = 0.5
 
 let toolbarWindow: BrowserWindow | null = null
 let ownerWindow: BrowserWindow | null = null
@@ -116,7 +118,26 @@ export function hideToolbar(): void {
 export function noteToolbarResize(window: BrowserWindow, width: number, height: number): void {
   if (window !== toolbarWindow) return
   toolbarSize = { width, height }
+  userSized = true
 }
+
+/** Whether the user has dragged the toolbar's width this session; it then stays theirs */
+let userSized = false
+
+/**
+ * The renderer reports the width its buttons need (one more in 手机面试模式, a
+ * state's text growing). Until the user drags it, the toolbar follows that, so
+ * no button is hidden for want of room; the work area still caps it.
+ */
+ipcMain.handle('toolbar:fit-width', (_event, width: number) => {
+  if (userSized || !Number.isFinite(width) || width <= 0) return
+  const next = Math.ceil(width)
+  if (next === toolbarSize.width) return
+  toolbarSize = { ...toolbarSize, width: next }
+  if (toolbarWindow && !toolbarWindow.isDestroyed() && toolbarWindow.isVisible()) {
+    syncToolbarBounds()
+  }
+})
 
 /**
  * The renderer owns whether the toolbar belongs on screen (main page + the
@@ -146,9 +167,10 @@ export function sendToToolbar(channel: string, payload: unknown): void {
  * value is applied to the whole window.
  */
 export function setToolbarOpacity(opacity: number): void {
-  toolbarOpacity = opacity
+  // Never fully gone with a fully transparent main window: 更清晰 must stay findable
+  toolbarOpacity = Math.max(opacity, TOOLBAR_MIN_OPACITY)
   if (!toolbarWindow || toolbarWindow.isDestroyed()) return
-  toolbarWindow.setOpacity(opacity)
+  toolbarWindow.setOpacity(toolbarOpacity)
 }
 
 /**
@@ -166,14 +188,23 @@ export function syncToolbarSettings(payload: {
 export interface ToolbarStatus {
   listening: boolean
   hintMode: HintMode
+  /** 手机面试模式, which brings the 我在说 / 对方在说 button */
+  phoneMode: boolean
+  speaker: Speaker
 }
 
 /** What the toolbar's buttons show; kept here since the toolbar's own stores never hear of it */
-let toolbarStatus: ToolbarStatus = { listening: false, hintMode: 'auto' }
+let toolbarStatus: ToolbarStatus = {
+  listening: false,
+  hintMode: 'auto',
+  phoneMode: false,
+  speaker: 'other'
+}
 
 export function updateToolbarStatus(patch: Partial<ToolbarStatus>): void {
   const next = { ...toolbarStatus, ...patch }
-  if (next.listening === toolbarStatus.listening && next.hintMode === toolbarStatus.hintMode) return
+  const keys = Object.keys(next) as (keyof ToolbarStatus)[]
+  if (keys.every((key) => next[key] === toolbarStatus[key])) return
   toolbarStatus = next
   sendToToolbar('sync-toolbar-status', toolbarStatus)
 }

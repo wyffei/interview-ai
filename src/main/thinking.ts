@@ -13,7 +13,7 @@
  */
 
 /** Hosts whose own spelling applies to every model; mirrors renderer lib/providers.ts */
-const OPENROUTER_HOSTS = ['openrouter.ai']
+export const OPENROUTER_HOSTS = ['openrouter.ai']
 const OPENAI_HOSTS = ['api.openai.com']
 
 /**
@@ -27,7 +27,7 @@ const OPENAI_HOSTS = ['api.openai.com']
 const THINKING_FIELD_ERROR = /thinking|reasoning/i
 
 /** The API Base URL's host; an empty URL means OpenAI itself (DEFAULT_API_BASE_URL) */
-function hostOf(baseURL: string): string {
+export function hostOf(baseURL: string): string {
   const url = baseURL.trim()
   if (!url) return OPENAI_HOSTS[0]
   try {
@@ -37,7 +37,7 @@ function hostOf(baseURL: string): string {
   }
 }
 
-function onHosts(host: string, hosts: string[]): boolean {
+export function onHosts(host: string, hosts: string[]): boolean {
   return hosts.some((h) => host === h || host.endsWith(`.${h}`))
 }
 

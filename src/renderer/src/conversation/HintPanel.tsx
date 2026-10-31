@@ -1,6 +1,17 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
-import { BookOpen, Brain, Eraser, LoaderCircle, PanelLeftOpen, X } from 'lucide-react'
+import {
+  BookOpen,
+  Brain,
+  ChevronDown,
+  ChevronRight,
+  Eraser,
+  Globe,
+  LoaderCircle,
+  PanelLeftOpen,
+  Telescope,
+  X
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import MarkdownRenderer from '@/components/MarkdownRenderer'
@@ -9,7 +20,8 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
-import { NO_REPLY, type HintCard, type HintReview } from '../../../shared/conversation'
+import { useBriefing } from '@/lib/briefing'
+import { NO_REPLY, isMine, type HintCard, type HintReview } from '../../../shared/conversation'
 import { startListening } from './listening'
 
 /** What one page of scrolling keeps of the previous page, so the eye finds its place */
@@ -21,6 +33,7 @@ export function HintPanel() {
   const setErrorMessage = useConversationStore((state) => state.setErrorMessage)
   const transcriptHidden = useSettingsStore((state) => state.conversationTranscriptHidden)
   const updateSetting = useSettingsStore((state) => state.updateSetting)
+  const navigate = useNavigate()
   const panelRef = useRef<HTMLDivElement>(null)
   const cardRefs = useRef(new Map<number, HTMLElement>())
   // Zero on mount, so coming back to the page (from the settings, say) lands on the newest hint
@@ -85,10 +98,17 @@ export function HintPanel() {
           </button>
         )}
         <span className="font-medium">提示</span>
+        <button
+          className="ml-auto flex items-center gap-1 rounded px-1 py-0.5 hover:bg-[var(--app-hover-bg)] cursor-pointer"
+          onClick={() => navigate('/briefing')}
+        >
+          <Telescope className="size-3.5" />
+          面试准备
+        </button>
         {hints.length > 0 && (
           <button
-            className="ml-auto flex items-center gap-1 rounded px-1 py-0.5 hover:bg-[var(--app-hover-bg)] cursor-pointer"
-            onClick={() => void window.api.clearConversation()}
+            className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-[var(--app-hover-bg)] cursor-pointer"
+            onClick={() => void window.api.requestClearConversation()}
           >
             <Eraser className="size-3.5" />
             清空对话
@@ -108,6 +128,8 @@ export function HintPanel() {
           </button>
         </div>
       )}
+
+      <BriefingStrip />
 
       <div
         ref={panelRef}
@@ -179,6 +201,58 @@ function NoteInput() {
   )
 }
 
+/**
+ * This interview's 行业卡片 (面试准备), folded to one line so it costs the hints
+ * no room; open, it scrolls on its own. Absent until there is a card
+ */
+function BriefingStrip() {
+  const briefing = useBriefing()
+  const [open, setOpen] = useState(false)
+  const streaming = briefing?.status === 'streaming' || briefing?.introStatus === 'streaming'
+  if (!briefing || (!briefing.card && !briefing.intro && !streaming)) return null
+
+  return (
+    <div className="mx-3 mb-2 shrink-0 rounded-lg border border-app-border text-xs">
+      <button
+        className="flex w-full min-w-0 items-center gap-1.5 px-2 py-1 text-app-muted-fg cursor-pointer select-none"
+        onClick={() => setOpen(!open)}
+      >
+        {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+        <span className="shrink-0 font-medium">行业卡片</span>
+        {briefing.company && <span className="min-w-0 truncate">· {briefing.company}</span>}
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {streaming ? (
+            <>
+              <LoaderCircle className="size-3 animate-spin" />
+              生成中
+            </>
+          ) : (
+            <>
+              {briefing.searched && <Globe className="size-3" />}
+              已用于提示
+            </>
+          )}
+        </span>
+      </button>
+      {open && (
+        <div className="max-h-[40vh] overflow-y-auto border-t border-app-border px-2 py-1">
+          {briefing.intro && (
+            <>
+              <p className="font-medium">自我介绍</p>
+              <MarkdownRenderer compact>{briefing.intro}</MarkdownRenderer>
+            </>
+          )}
+          {briefing.card ? (
+            <MarkdownRenderer compact>{briefing.card}</MarkdownRenderer>
+          ) : (
+            <p className="text-app-muted-fg">正在检索…</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** How far the panel scrolls for one page, by the shortcut or after a long hint */
 function pageStep(panel: HTMLElement): number {
   return Math.max(panel.clientHeight - PAGE_OVERLAP, panel.clientHeight / 2)
@@ -208,7 +282,7 @@ function HintCardView({ card, ref }: { card: HintCard; ref: (el: HTMLElement | n
   // What it answers, for when the transcript column is hidden or scrolled away
   const question = useConversationStore((state) =>
     state.utterances
-      .filter((u) => u.id >= card.fromId && u.id <= card.toId)
+      .filter((u) => u.id >= card.fromId && u.id <= card.toId && !isMine(u))
       .map((u) => u.text)
       .join(' ')
   )
@@ -284,7 +358,9 @@ function ReviewBadge({ review }: { review: HintReview }) {
   const versions = review.versions ?? 1
   const label =
     review.tier === 'direct'
-      ? '复盘库原文'
+      ? review.briefing
+        ? '面试准备原文'
+        : '复盘库原文'
       : versions > 1
         ? `按复盘库 ${versions} 个版本改写`
         : '按复盘库改写'

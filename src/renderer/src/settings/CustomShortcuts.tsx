@@ -91,6 +91,11 @@ export function CustomShortcuts() {
             description="自动：对方说完一句就出提示；手动：只在按「出提示」时出"
             shortcut="toggleHintMode"
           />
+          <Shortcut
+            label="我在说/对方在说"
+            description="手机面试模式下切换说话人；我说的话只作上下文，不出提示"
+            shortcut="toggleSpeaker"
+          />
         </div>
 
         {/* AI and listening */}

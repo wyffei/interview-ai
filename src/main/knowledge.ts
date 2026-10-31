@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import { extractFileText, normalizeText } from './knowledge-parse'
 import {
   estimateTokens,
+  isResumeDoc,
   KNOWLEDGE_EXTENSIONS,
   KNOWLEDGE_SEARCH_SUGGESTED_CHARS,
   type KnowledgeDoc,
@@ -182,6 +183,19 @@ async function removeDoc(id: string): Promise<void> {
   await persist(() => unlink(textPath(id)).catch(() => {}))
 }
 
+/** Whether a resume attached on the 面试准备 page stands in for the 资料库's (see briefing.ts) */
+let resumeAttached: () => boolean = () => false
+
+export function setResumeAttached(check: () => boolean): void {
+  resumeAttached = check
+}
+
+/** The docs in use: enabled, and not a resume while another is attached for this interview */
+function usedDocs(): KnowledgeDoc[] {
+  const skipResume = resumeAttached()
+  return load().filter((doc) => !doc.disabled && !(skipResume && isResumeDoc(doc)))
+}
+
 /**
  * The material sent in full, as the opening of the system prompt. It goes before
  * the scene's prompt: a prefix that stays the same across requests (and across
@@ -189,7 +203,7 @@ async function removeDoc(id: string): Promise<void> {
  * sit closer to the question.
  */
 export function getKnowledgePrompt(): string {
-  const used = load().filter((doc) => !doc.disabled && doc.use !== 'search' && texts.get(doc.id))
+  const used = usedDocs().filter((doc) => doc.use !== 'search' && texts.get(doc.id))
   if (used.length === 0) return ''
 
   const blocks = used.map(
@@ -232,15 +246,19 @@ function withStats(doc: KnowledgeDoc): KnowledgeDoc {
  * when there are none, so callers can tell 「nothing found」 from 「nothing to
  * search」.
  */
-export function searchKnowledge(question: string, hint = ''): ReviewLookup | null {
+export function searchKnowledge(
+  question: string,
+  hint = '',
+  relatedLimit?: number
+): ReviewLookup | null {
   if (!question.trim()) return null
-  const used = load().filter((doc) => !doc.disabled && doc.use === 'search')
+  const used = usedDocs().filter((doc) => doc.use === 'search')
   if (used.length === 0) return null
   const key = used.map((doc) => `${doc.id}@${doc.updatedAt}`).join('|')
   if (searchIndex?.key !== key) {
     searchIndex = { key, index: buildReviewIndex(used.flatMap(entriesOf)) }
   }
-  return lookupReview(searchIndex.index, question, undefined, hint)
+  return lookupReview(searchIndex.index, question, relatedLimit, hint)
 }
 
 ipcMain.handle('knowledge:list', () => load().map(withStats))

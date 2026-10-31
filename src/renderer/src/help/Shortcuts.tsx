@@ -63,6 +63,7 @@ const getShortcutDescription = (action: string) => {
     decreaseOpacity: '提高透明度(窗口更透明)',
     generateHint: '立即出提示（没有新内容时换个说法重出）',
     toggleHintMode: '切换自动/手动出提示',
+    toggleSpeaker: '手机面试：切换「我在说」/「对方在说」',
     stopSolutionStream: '停止生成提示',
     previousApiProfile: '切换到上一个 AI 配置',
     nextApiProfile: '切换到下一个 AI 配置',

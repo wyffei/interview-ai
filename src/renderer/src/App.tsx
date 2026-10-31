@@ -4,6 +4,7 @@ import { Toaster } from 'sonner'
 import ConversationPage from '@/conversation'
 import SettingsPage from '@/settings'
 import HelpPage from '@/help'
+import BriefingPage from '@/briefing'
 import { OverlayToolbar } from '@/toolbar/OverlayToolbar'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
@@ -67,6 +68,7 @@ export default function App() {
           <Route index element={<ConversationPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="help" element={<HelpPage />} />
+          <Route path="briefing" element={<BriefingPage />} />
           <Route path="toolbar" element={<OverlayToolbar />} />
         </Routes>
       </HashRouter>

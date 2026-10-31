@@ -13,9 +13,10 @@ function downsampleAndSend(float32: Float32Array): void {
   window.api.sendTranscriptionAudioChunk(int16.buffer)
 }
 
+/** Blank `deviceId` is the system's default microphone */
 async function openMicrophoneStream(deviceId: string): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({
-    audio: { deviceId: { exact: deviceId } },
+    audio: deviceId ? { deviceId: { exact: deviceId } } : true,
     video: false
   })
 }
@@ -29,20 +30,17 @@ async function openSystemAudioStream(): Promise<MediaStream> {
   return stream
 }
 
+/**
+ * System audio (the other side of an online call), or in 手机面试模式 the
+ * picked microphone. A microphone that will not open is an error, not a quiet
+ * switch to system audio: the user would be listening to the wrong thing.
+ */
 export async function startAudioCapture(): Promise<void> {
-  const { audioInputDeviceId, audioOutputDeviceId } = useSettingsStore.getState()
+  const { phoneMode, audioInputDeviceId, audioOutputDeviceId } = useSettingsStore.getState()
 
-  let stream: MediaStream
-  if (audioInputDeviceId) {
-    try {
-      stream = await openMicrophoneStream(audioInputDeviceId)
-    } catch (err) {
-      console.warn('Failed to open selected microphone, falling back to system audio:', err)
-      stream = await openSystemAudioStream()
-    }
-  } else {
-    stream = await openSystemAudioStream()
-  }
+  const stream = phoneMode
+    ? await openMicrophoneStream(audioInputDeviceId)
+    : await openSystemAudioStream()
 
   mediaStream = stream
 

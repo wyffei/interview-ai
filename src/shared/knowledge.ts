@@ -34,6 +34,14 @@ export interface KnowledgeDoc {
  */
 export type KnowledgeUse = 'full' | 'search'
 
+/**
+ * A 资料库 doc that is the user's resume, by its name or the file it came from.
+ * A resume attached on the 面试准备 page stands in for these for that interview
+ */
+export function isResumeDoc(doc: Pick<KnowledgeDoc, 'name' | 'source'>): boolean {
+  return /简历|个人信息汇总|resume|(^|[^a-z])cv([^a-z]|$)/i.test(`${doc.name} ${doc.source ?? ''}`)
+}
+
 /** Imports longer than this start as `search`: sent in full they would slow every request down */
 export const KNOWLEDGE_SEARCH_SUGGESTED_CHARS = 8000
 

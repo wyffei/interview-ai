@@ -7,6 +7,7 @@ import { stopAudioCapture } from '@/lib/audio-capture'
 import { useMainPage } from '@/lib/use-main-page'
 import { AppHeader } from '@/components/AppHeader'
 import { PrerequisitesChecker } from './PrerequisitesChecker'
+import { ClearConfirmDialog } from './ClearConfirmDialog'
 import { TranscriptPanel } from './TranscriptPanel'
 import { HintPanel } from './HintPanel'
 import { toggleHintMode, toggleListening } from './listening'
@@ -30,6 +31,7 @@ export default function ConversationPage() {
         <HintPanel />
       </div>
       <PrerequisitesChecker />
+      <ClearConfirmDialog />
     </div>
   )
 }
@@ -78,9 +80,21 @@ function useConversationEvents() {
       store.clear()
     })
     window.api.onConversationNotice((message) => toast(message, { duration: 2500 }))
+    window.api.onConversationSpeaker((speaker) => store.setSpeaker(speaker))
     window.api.onToggleHintMode(toggleHintMode)
+    // A clear right after preparing (testing the microphone, say) would lose a whole search
+    const offBriefingCleared = window.api.onBriefingCleared((company) =>
+      toast(
+        `已一并清除${company ? `「${company}」` : '这场面试'}的面试准备（简历、行业卡片、自我介绍）`,
+        {
+          duration: 8000,
+          action: { label: '撤销', onClick: () => void window.api.restoreBriefing() }
+        }
+      )
+    )
 
     return () => {
+      offBriefingCleared()
       if (frameHandle.current !== null) window.cancelAnimationFrame(frameHandle.current)
       frameHandle.current = null
       pendingChunks.current.clear()

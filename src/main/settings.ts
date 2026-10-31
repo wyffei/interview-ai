@@ -29,6 +29,9 @@ ipcMain.handle('updateAppSettings', (_event, _settings) => {
   if ('conversationHintMode' in _settings) {
     updateToolbarStatus({ hintMode: settings.conversationHintMode })
   }
+  if ('phoneMode' in _settings) {
+    updateToolbarStatus({ phoneMode: settings.phoneMode })
+  }
   if ('opacity' in _settings) {
     setToolbarOpacity(settings.opacity)
   }
@@ -94,7 +97,7 @@ export const settings = {
   /** Where the conversations go; blank means Documents/InterviewCoder */
   conversationSaveDir: '',
   /** Kept in sync with the renderer so the overlay toolbar can match the main window */
-  opacity: 0.8,
+  opacity: 0.75,
   /**
    * Dwell time in ms before hovering a toolbar button fires it; 0 disables hover
    * triggering. The real default lives in the renderer store: App.tsx fills blank
@@ -103,6 +106,16 @@ export const settings = {
   toolbarHoverDelay: 0,
   dashscopeApiKey: '',
   hideDockIcon: false,
+  /**
+   * 手机面试模式: listen through a microphone (`audioInputDeviceId`) instead of
+   * system audio, which hears the user too, so sentences carry a speaker
+   */
+  phoneMode: false,
+  /**
+   * Put the sentences after a hint down to the user, who is answering by then.
+   * Must stay falsy here (the renderer's default is on), see `disableThinking`
+   */
+  phoneAutoMe: false,
   audioInputDeviceId: '',
   audioOutputDeviceId: ''
 }

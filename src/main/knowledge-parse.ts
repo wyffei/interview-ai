@@ -1,7 +1,7 @@
 import { readFile, stat } from 'fs/promises'
 import { extname } from 'path'
 import { KNOWLEDGE_EXTENSIONS } from '../shared/knowledge'
-import { docxHtmlToMarkdown } from './docx-markdown'
+import { docxHtmlToMarkdown, isWordXml, wordXmlToMarkdown } from './docx-markdown'
 
 /**
  * Text out of an imported 资料库 file. The parsers are loaded on first use, so
@@ -16,8 +16,7 @@ const MAX_TEXT_CHARS = 200_000
 
 export async function extractFileText(filePath: string): Promise<string> {
   const ext = extname(filePath).slice(1).toLowerCase()
-  if (ext === 'doc') throw new Error('不支持旧版 .doc，请用 Word 另存为 .docx 后再导入')
-  if (!KNOWLEDGE_EXTENSIONS.includes(ext)) {
+  if (ext !== 'doc' && !KNOWLEDGE_EXTENSIONS.includes(ext)) {
     throw new Error('不支持这种文件，可导入 PDF、Word（.docx）、Markdown 和 TXT')
   }
 
@@ -27,7 +26,12 @@ export async function extractFileText(filePath: string): Promise<string> {
 
   const buffer = await readFile(filePath)
   let text: string
-  if (ext === 'pdf') text = await readPdf(buffer)
+  // Recruitment systems' forms: Word 2003 XML under a .docx / .doc name (see wordXmlToMarkdown)
+  const wordXml =
+    (ext === 'docx' || ext === 'doc') && isWordXml(decodeText(buffer.subarray(0, 2000)))
+  if (wordXml) text = wordXmlToMarkdown(decodeText(buffer))
+  else if (ext === 'doc') throw new Error('不支持旧版 .doc，请用 Word 另存为 .docx 后再导入')
+  else if (ext === 'pdf') text = await readPdf(buffer)
   else if (ext === 'docx') text = await readDocx(buffer)
   else text = decodeText(buffer)
 

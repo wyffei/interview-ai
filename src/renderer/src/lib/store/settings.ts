@@ -6,6 +6,7 @@ import englishInterviewPrompt from './prompts/english-interview.md?raw'
 import { DEFAULT_THEME, type Theme } from '../theme'
 import { normalizeBaseURL, resolveLinkedModel, type ModelSwitchReason } from '../providers'
 import { createProfile, type ApiProfile } from '../api-profiles'
+import { fileStorage } from './file-storage'
 import type { HintMode } from '../../../../shared/conversation'
 
 export type { Theme }
@@ -102,9 +103,10 @@ function patchActiveProfile(
   return profiles.some((p) => p.id === id) ? patchProfile(profiles, id, patch) : profiles
 }
 
-export const OPACITY_MIN = 0.1
+/** Five levels: fully transparent, ¼, ½, ¾, fully opaque */
+export const OPACITY_MIN = 0
 export const OPACITY_MAX = 1
-export const OPACITY_STEP = 0.05
+export const OPACITY_STEP = 0.25
 
 interface Settings {
   /** Window colour scheme; `light` is a white background with dark text */
@@ -159,6 +161,15 @@ interface Settings {
 
   hideDockIcon: boolean
 
+  /**
+   * 手机面试模式: listen through `audioInputDeviceId` (a microphone near the
+   * phone) instead of system audio. It hears the user too, so the user says who
+   * is talking with the 我在说 / 对方在说 button
+   */
+  phoneMode: boolean
+  /** In 手机面试模式, switch to 我在说 once a hint is out */
+  phoneAutoMe: boolean
+  /** The microphone 手机面试模式 listens through; blank = the system default */
   audioInputDeviceId: string
   audioOutputDeviceId: string
 
@@ -170,6 +181,10 @@ interface Settings {
   conversationMinChars: number
   /** Hide the transcript column to give the hints the whole window */
   conversationTranscriptHidden: boolean
+  /** 面试准备: research the 行业卡片 with web search (see main briefing.ts) */
+  briefingWebSearch: boolean
+  /** 面试准备: what the self-introduction must be like; blank means DEFAULT_INTRO_PROMPT */
+  briefingIntroPrompt: string
   /** 把每段对话自动保存为 Markdown 文件 */
   conversationAutoSave: boolean
   /** 对话记录保存目录；为空时用 文档/InterviewCoder */
@@ -214,8 +229,8 @@ interface SettingsStore extends Settings {
   updateCredential: (patch: Partial<Pick<ApiProfile, (typeof CREDENTIAL_KEYS)[number]>>) => void
   addCustomModel: (baseURL: string, model: string) => void
   removeCustomModel: (baseURL: string, model: string) => void
-  /** Step the window opacity within [OPACITY_MIN, OPACITY_MAX] */
-  adjustOpacity: (delta: number) => void
+  /** Step the window opacity one level up (`direction` > 0) or down, within [OPACITY_MIN, OPACITY_MAX] */
+  adjustOpacity: (direction: number) => void
   syncSettings: (settings: Partial<Settings>) => void
   /** Make a scene the active one */
   setActiveScene: (id: string) => void
@@ -251,7 +266,7 @@ const defaultSettings: Settings = {
   conversationSceneId: TECH_INTERVIEW_SCENE_ID,
   removedPresetSceneIds: [],
 
-  opacity: 0.8,
+  opacity: 0.75,
   resizable: true,
   showOverlayToolbar: true,
   toolbarHoverDelay: 1000,
@@ -260,6 +275,8 @@ const defaultSettings: Settings = {
 
   hideDockIcon: false,
 
+  phoneMode: false,
+  phoneAutoMe: true,
   audioInputDeviceId: '',
   audioOutputDeviceId: '',
 
@@ -267,6 +284,8 @@ const defaultSettings: Settings = {
   conversationSilenceMs: 800,
   conversationMinChars: 4,
   conversationTranscriptHidden: false,
+  briefingWebSearch: true,
+  briefingIntroPrompt: '',
   conversationAutoSave: false,
   conversationSaveDir: ''
 }
@@ -482,10 +501,11 @@ export const useSettingsStore = create<SettingsStore>()(
           }
         })
       },
-      adjustOpacity: (delta) => {
-        const raw = get().opacity + delta
-        // Round to 2 decimals to avoid float drift across repeated presses
-        const opacity = Math.min(OPACITY_MAX, Math.max(OPACITY_MIN, Math.round(raw * 100) / 100))
+      adjustOpacity: (direction) => {
+        // One level up or down. A value saved between levels (0.8 from the old
+        // finer steps) is left alone until a press moves it to a level
+        const level = Math.round(get().opacity / OPACITY_STEP) + Math.sign(direction)
+        const opacity = Math.min(OPACITY_MAX, Math.max(OPACITY_MIN, level * OPACITY_STEP))
         set({ opacity })
       },
       syncSettings: (settings) => {
@@ -570,6 +590,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'interview-coder-settings',
+      storage: fileStorage,
       version: 8,
       migrate: (persisted, version) => {
         const state = persisted as Partial<Settings>
@@ -584,6 +605,10 @@ export const useSettingsStore = create<SettingsStore>()(
       },
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted as Partial<Settings>) }
+        // A microphone picked before the mode existed was listened through; keep it so
+        if ((persisted as Partial<Settings> | undefined)?.phoneMode === undefined) {
+          state.phoneMode = !!state.audioInputDeviceId
+        }
         // Rebuild the presets on every load, so ones added in a later version
         // show up for existing users; the ones the user deleted stay out
         const persistedScenes = Array.isArray(state.scenes) ? state.scenes : []

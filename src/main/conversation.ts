@@ -2,15 +2,27 @@ import { app, ipcMain } from 'electron'
 import type { ModelMessage } from 'ai'
 import { getHintStream } from './ai'
 import { searchKnowledge } from './knowledge'
+import {
+  endInterview,
+  getBriefing,
+  getBriefingCompany,
+  getPreparedIntro,
+  hasPreparation,
+  onBriefingChanged
+} from './briefing'
+import { INTRO_QUESTION } from '../shared/briefing'
 import { settings, getHintProfile, onSettingsChanged } from './settings'
 import { saveConversation, saveConversationSync } from './save-conversation'
 import { consumeStream, extractErrorMessage } from './stream'
 import { isTranscriptionRunning, onConversationSentence, onTranscriptionEnd } from './transcription'
+import { updateToolbarStatus } from './toolbar-window'
 import {
   countMeaningfulChars,
+  isMine,
   type ConversationSnapshot,
   type HintCard,
   type HintReview,
+  type Speaker,
   type Utterance
 } from '../shared/conversation'
 import { entryLabel, type ReviewEntry, type ReviewLookup } from '../shared/review-search'
@@ -34,6 +46,12 @@ import { entryLabel, type ReviewEntry, type ReviewLookup } from '../shared/revie
  * what the hint is for: a prepared answer to that very question is shown at
  * once instead, and otherwise only the entries that fit go along with the
  * request (see `materialBlock`).
+ *
+ * 手机面试模式 (`phoneMode`) listens through a microphone, which hears the user
+ * answering as well. The user says who is talking (`speaker`, flipped by the
+ * shortcut or the toolbar, and set to 'me' once a hint is out when
+ * `phoneAutoMe`); the user's sentences are shown and sent as context, but never
+ * trigger, withdraw or make up what a hint is for.
  */
 
 /** How much earlier conversation goes along as context, whichever runs out first */
@@ -66,6 +84,8 @@ let saveFailed = false
  * request and steers the 复盘库 search; a clear (the next interview) drops it.
  */
 let note = ''
+/** Who new sentences are put down to; always 'other' outside 手机面试模式 */
+let speaker: Speaker = 'other'
 
 interface HintStream {
   controller: AbortController
@@ -112,7 +132,7 @@ function saveNow() {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = null
   if (!settings.conversationAutoSave) return
-  saveConversation({ startedAt, utterances, hints }).then(
+  saveConversation({ startedAt, utterances, hints, briefing: getBriefing() }).then(
     () => {
       saveFailed = false
     },
@@ -138,6 +158,70 @@ function waitingCard(): HintCard | undefined {
   return hints.find((card) => card.status === 'waiting')
 }
 
+/** The other side's latest sentence; the user's own are never what a hint is for */
+function lastOther(): Utterance | undefined {
+  for (let i = utterances.length - 1; i >= 0; i--) {
+    if (!isMine(utterances[i])) return utterances[i]
+  }
+  return undefined
+}
+
+/**
+ * What the other side said since the last hint, the range a new card covers.
+ * Starts at their first sentence, so an answer of the user's before it goes
+ * along as context instead.
+ */
+function unhinted(): { fromId: number; toId: number } | undefined {
+  const pending = utterances.filter((u) => u.id > hintedUpTo && !isMine(u))
+  if (pending.length === 0) return undefined
+  return { fromId: pending[0].id, toId: pending[pending.length - 1].id }
+}
+
+/**
+ * Who new sentences are put down to. Switching to the other side also hands
+ * them the sentence being spoken: the button is pressed once they have started.
+ * Switching to the user leaves it alone, it is the end of the question.
+ */
+export function setSpeaker(next: Speaker): void {
+  if (!settings.phoneMode) next = 'other'
+  if (next === speaker) return
+  speaker = next
+  send('conversation-speaker', speaker)
+  updateToolbarStatus({ speaker })
+
+  const open = openUtterance()
+  if (next === 'other' && open && isMine(open)) {
+    delete open.speaker
+    publishUtterance(open)
+    onSentenceGrowing(open)
+  }
+}
+
+/** The shortcut / toolbar: 我在说 ⇄ 对方在说 */
+export function toggleSpeaker(): void {
+  if (!settings.phoneMode) {
+    send('conversation-notice', '在「设置 → 语音」开启手机面试模式后才能切换说话人')
+    return
+  }
+  setSpeaker(speaker === 'me' ? 'other' : 'me')
+}
+
+/**
+ * Correct one sentence's speaker from the transcript. One handed to the other
+ * side is treated as if it had just been said: it may withdraw or ask for a hint.
+ */
+function setUtteranceSpeaker(id: number, next: Speaker) {
+  const utterance = utterances.find((u) => u.id === id)
+  if (!utterance || !settings.phoneMode) return
+  if ((next === 'me') === isMine(utterance)) return
+  if (next === 'me') utterance.speaker = 'me'
+  else delete utterance.speaker
+  publishUtterance(utterance)
+  if (next === 'me') return
+  if (utterance.final) onSentenceFinished(utterance)
+  else onSentenceGrowing(utterance)
+}
+
 /** Cut a card's stream short; whoever does so updates the card */
 function stopStream(cardId: number) {
   streams.get(cardId)?.controller.abort()
@@ -149,7 +233,7 @@ function handleSentence(text: string, final: boolean) {
   if (!utterance) {
     // The recogniser reports silence as an empty sentence; nothing to show
     if (!text.trim()) return
-    utterance = { id: nextUtteranceId++, text, final }
+    utterance = { id: nextUtteranceId++, text, final, ...(speaker === 'me' ? { speaker } : {}) }
     utterances.push(utterance)
     startedAt ||= Date.now()
   } else {
@@ -167,6 +251,8 @@ function handleSentence(text: string, final: boolean) {
     return
   }
   publishUtterance(utterance)
+  // The user answering: context for the next hint, nothing to act on
+  if (isMine(utterance)) return
 
   if (final) onSentenceFinished(utterance)
   else onSentenceGrowing(utterance)
@@ -203,7 +289,9 @@ function onSentenceFinished(utterance: Utterance) {
   // 「好的」「嗯」: nothing to answer. The sentences skipped here still go along
   // with the next hint, as part of what it covers
   if (countMeaningfulChars(utterance.text) < minChars()) return
-  void startHint(createCard(hintedUpTo + 1, utterance.id), hintedUpTo + 1, utterance.id, 'auto')
+  const pending = unhinted()
+  if (!pending) return
+  void startHint(createCard(pending.fromId, pending.toId), pending.fromId, pending.toId, 'auto')
 }
 
 function createCard(fromId: number, toId: number): HintCard {
@@ -220,10 +308,15 @@ function createCard(fromId: number, toId: number): HintCard {
   return card
 }
 
+/** Whether `utterance` is part of the question a hint for `fromId`..`toId` answers */
+function inFocus(utterance: Utterance, fromId: number, toId: number): boolean {
+  return utterance.id >= fromId && utterance.id <= toId && !isMine(utterance)
+}
+
 /** What the other side said in utterances `fromId`..`toId`, the question a hint is for */
 function focusText(fromId: number, toId: number): string {
   return utterances
-    .filter((u) => u.id >= fromId && u.id <= toId)
+    .filter((u) => inFocus(u, fromId, toId))
     .map((u) => u.text)
     .join(' ')
 }
@@ -324,21 +417,33 @@ function buildMessages(
 ): ModelMessage[] {
   const context: string[] = []
   let chars = 0
-  const earlier = utterances.filter((u) => u.id < fromId && u.text.trim())
+  // The user's own sentences among the question's go along as context too
+  const earlier = utterances.filter(
+    (u) => u.id <= toId && !inFocus(u, fromId, toId) && u.text.trim()
+  )
+  // With the user's answers in it, each line says whose it is
+  const labelled = earlier.some(isMine)
   // Most recent first, until the budget runs out
   for (let i = earlier.length - 1; i >= 0 && context.length < CONTEXT_UTTERANCES; i--) {
     chars += earlier[i].text.length
     if (chars > CONTEXT_CHARS && context.length > 0) break
-    context.unshift(earlier[i].text)
+    const u = earlier[i]
+    context.unshift(labelled ? `${isMine(u) ? '我' : '对方'}：${u.text}` : u.text)
   }
 
-  const focus = utterances.filter((u) => u.id >= fromId && u.id <= toId && u.text.trim())
+  const focus = utterances.filter((u) => inFocus(u, fromId, toId) && u.text.trim())
   const unfinished = focus.length > 0 && !focus[focus.length - 1].final
 
   const parts: string[] = []
   const material = lookup ? materialBlock(lookup) : ''
   if (material) parts.push(material)
-  if (context.length > 0) parts.push(`【之前对方说过的话】\n${context.join('\n')}`)
+  if (context.length > 0) {
+    parts.push(
+      labelled
+        ? `【之前的对话】（「我」是用户自己的回答）\n${context.join('\n')}`
+        : `【之前对方说过的话】\n${context.join('\n')}`
+    )
+  }
   if (note.trim()) {
     parts.push(
       `【用户补充的说明】\n${note.trim()}\n（用户在面试中手动补充的关键词或说明，例如对方的公司、正在问的是哪个项目。语音识别可能听错专有名词，理解对方的话和作答时以这里为准）`
@@ -356,9 +461,7 @@ function buildMessages(
       `【上一版提示】\n${rewrite.previous}\n\n用户刚补充了上面的说明，请结合说明重新给出提示。`
     )
   } else if (rewrite?.previous.trim()) {
-    parts.push(
-      `【上一版提示】\n${rewrite.previous}\n\n请换一个角度重新给出提示，不要重复上一版。`
-    )
+    parts.push(`【上一版提示】\n${rewrite.previous}\n\n请换一个角度重新给出提示，不要重复上一版。`)
   }
   return [{ role: 'user', content: parts.join('\n\n') }]
 }
@@ -384,12 +487,30 @@ async function startHint(
     review: undefined
   } satisfies Partial<HintCard>)
   hintedUpTo = Math.max(hintedUpTo, toId)
+  // The question is out and the hint on its way: what is said next is the user answering
+  if (!rewrite && settings.phoneAutoMe) setSpeaker('me')
 
   const generation = (generations.get(card.id) ?? 0) + 1
   generations.set(card.id, generation)
 
-  // The picked option names what the question is about (a project, say), so it steers the search too
-  const lookup = searchKnowledge(focusText(fromId, toId), `${note} ${rewrite?.answer ?? ''}`)
+  // Asked to introduce themselves: the one prepared for this interview (面试准备), as is.
+  // Not for a rewrite, which asks for something other than what is there
+  const intro = rewrite ? '' : getPreparedIntro()
+  if (intro && INTRO_QUESTION.test(focusText(fromId, toId))) {
+    card.text = intro
+    card.review = { tier: 'direct', source: '面试准备 › 自我介绍', related: 0, briefing: true }
+    card.status = 'done'
+    card.latencyMs = 0
+    publishHint(card)
+    return
+  }
+
+  // The picked option names what the question is about (a project, say), so it steers the search
+  // too, and so does the company being interviewed with (面试准备)
+  const lookup = searchKnowledge(
+    focusText(fromId, toId),
+    `${note} ${getBriefingCompany()} ${rewrite?.answer ?? ''}`
+  )
   if (lookup) card.review = reviewOf(lookup)
   // A prepared answer to this very question: shown as is, no model and no wait.
   // Not for a rewrite, which asks for something other than what is there
@@ -450,7 +571,7 @@ async function startHint(
  * last hint.
  */
 export function requestHint(): void {
-  const latest = utterances.at(-1)
+  const latest = lastOther()
   const current = [...hints]
     .reverse()
     .find((card) => card.status === 'streaming' || card.status === 'waiting')
@@ -462,8 +583,9 @@ export function requestHint(): void {
     void startHint(current, current.fromId, toId, 'manual')
     return
   }
-  if (latest && latest.id > hintedUpTo) {
-    void startHint(createCard(hintedUpTo + 1, latest.id), hintedUpTo + 1, latest.id, 'manual')
+  const pending = unhinted()
+  if (pending) {
+    void startHint(createCard(pending.fromId, pending.toId), pending.fromId, pending.toId, 'manual')
     return
   }
   const last = hints.at(-1)
@@ -502,14 +624,15 @@ export function submitNote(): boolean {
     return true
   }
 
-  const latest = utterances.at(-1)
+  const latest = lastOther()
+  const pending = unhinted()
   const waiting = waitingCard()
   const last = hints.at(-1)
   if (waiting) {
     // Withdrawn, so there is nothing on it to keep
     void startHint(waiting, waiting.fromId, Math.max(waiting.toId, latest?.id ?? 0), 'manual')
-  } else if (latest && latest.id > hintedUpTo) {
-    fresh(hintedUpTo + 1, latest.id)
+  } else if (pending) {
+    fresh(pending.fromId, pending.toId)
   } else if (last) {
     fresh(last.fromId, last.toId, { previous: last.text, noted: true })
   } else {
@@ -532,7 +655,19 @@ export function stopHints(): void {
   }
 }
 
-export function clearConversation(): void {
+/**
+ * 「清空对话」 (button or shortcut). With a 面试准备 on hand the page asks first
+ * whether it goes too (`conversation-confirm-clear`); the answer comes back as
+ * `conversation:clear`. Asked in the page, not a native dialog: that would be
+ * drawn outside the window's content protection
+ */
+export function requestClear(): void {
+  if (hasPreparation()) send('conversation-confirm-clear')
+  else clearConversation(false)
+}
+
+/** `keepBriefing`: the 面试准备 stays for the interview still to come */
+export function clearConversation(keepBriefing: boolean): void {
   for (const id of [...streams.keys()]) stopStream(id)
   // The last changes still go into this conversation's file; the next one gets its own
   if (saveTimer) saveNow()
@@ -544,6 +679,10 @@ export function clearConversation(): void {
   startedAt = 0
   note = ''
   send('conversation-cleared')
+  // The next interview gets a card of its own, not this one's
+  if (!keepBriefing) endInterview()
+  // The next interview starts with a question
+  setSpeaker('other')
 }
 
 function getSnapshot(): ConversationSnapshot {
@@ -551,7 +690,8 @@ function getSnapshot(): ConversationSnapshot {
     utterances: utterances.map((u) => ({ ...u })),
     hints: hints.map((card) => ({ ...card })),
     listening: isTranscriptionRunning(),
-    note
+    note,
+    speaker
   }
 }
 
@@ -564,7 +704,16 @@ onTranscriptionEnd(() => {
   open.final = true
   publishUtterance(open)
   const waiting = waitingCard()
-  if (waiting) void startHint(waiting, waiting.fromId, open.id, 'auto')
+  if (waiting)
+    void startHint(waiting, waiting.fromId, isMine(open) ? waiting.toId : open.id, 'auto')
+})
+
+// A card finished (or redone) mid-interview belongs in its record too
+onBriefingChanged(scheduleSave)
+
+// Out of 手机面试模式 only the other side is heard
+onSettingsChanged(() => {
+  if (!settings.phoneMode) setSpeaker('other')
 })
 
 // Turned on (or pointed at another folder) mid-conversation: save what is there already
@@ -584,15 +733,24 @@ app.on('will-quit', () => {
   if (!saveTimer) return
   clearTimeout(saveTimer)
   saveTimer = null
-  if (settings.conversationAutoSave) saveConversationSync({ startedAt, utterances, hints })
+  if (settings.conversationAutoSave) {
+    saveConversationSync({ startedAt, utterances, hints, briefing: getBriefing() })
+  }
 })
 
 ipcMain.handle('conversation:get-snapshot', () => getSnapshot())
 ipcMain.handle('conversation:request-hint', () => requestHint())
 ipcMain.handle('conversation:stop-hints', () => stopHints())
-ipcMain.handle('conversation:clear', () => clearConversation())
+ipcMain.handle('conversation:request-clear', () => requestClear())
+ipcMain.handle('conversation:clear', (_event, keepBriefing: boolean) =>
+  clearConversation(Boolean(keepBriefing))
+)
 // Applies from the next request; one already streaming keeps what it was sent
 ipcMain.handle('conversation:set-note', (_event, text: string) => {
   note = String(text ?? '').slice(0, 200)
 })
 ipcMain.handle('conversation:submit-note', () => submitNote())
+ipcMain.handle('conversation:toggle-speaker', () => toggleSpeaker())
+ipcMain.handle('conversation:set-utterance-speaker', (_event, id: number, next: Speaker) =>
+  setUtteranceSpeaker(id, next === 'me' ? 'me' : 'other')
+)

@@ -1,5 +1,10 @@
 import { create } from 'zustand'
-import type { ConversationSnapshot, HintCard, Utterance } from '../../../../shared/conversation'
+import type {
+  ConversationSnapshot,
+  HintCard,
+  Speaker,
+  Utterance
+} from '../../../../shared/conversation'
 
 /**
  * The conversation page state: a copy of what main holds (see main conversation.ts),
@@ -13,6 +18,8 @@ interface ConversationState {
   focusedHintId: number | null
   /** Keywords typed for the hints; main keeps the copy requests use */
   note: string
+  /** Who new sentences are put down to (手机面试模式); main owns it */
+  speaker: Speaker
 }
 
 interface ConversationStore extends ConversationState {
@@ -26,6 +33,7 @@ interface ConversationStore extends ConversationState {
   setErrorMessage: (message: string | null) => void
   setFocusedHintId: (id: number | null) => void
   setNote: (note: string) => void
+  setSpeaker: (speaker: Speaker) => void
 }
 
 export const useConversationStore = create<ConversationStore>()((set) => ({
@@ -34,7 +42,9 @@ export const useConversationStore = create<ConversationStore>()((set) => ({
   errorMessage: null,
   focusedHintId: null,
   note: '',
-  applySnapshot: ({ utterances, hints, note }) => set({ utterances, hints, note }),
+  speaker: 'other',
+  applySnapshot: ({ utterances, hints, note, speaker }) =>
+    set({ utterances, hints, note, speaker }),
   upsertUtterance: (utterance) =>
     set((state) => {
       const index = state.utterances.findIndex((u) => u.id === utterance.id)
@@ -66,5 +76,6 @@ export const useConversationStore = create<ConversationStore>()((set) => ({
   setNote: (note) => {
     set({ note })
     void window.api.setConversationNote(note)
-  }
+  },
+  setSpeaker: (speaker) => set({ speaker })
 }))

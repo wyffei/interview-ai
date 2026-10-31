@@ -1,6 +1,6 @@
 {
   "name": "interview-coder-cn",
-  "version": "3.1.0",
+  "version": "1.1.1",
   "description": "语音面试 AI 助手：听对话实时出提示，复盘库按题检索",
   "main": "./out/main/index.js",
   "devEngines": {
@@ -21,11 +21,12 @@
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
+    "release:win": "npm run build && electron-builder --win --publish always",
     "build:mac": "electron-vite build && electron-builder --mac"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ooboqoo/interview-coder-cn.git"
+    "url": "git+https://github.com/wyffei/interview-ai.git"
   },
   "keywords": [
     "语音面试助手",
@@ -37,9 +38,9 @@
   "author": "Gavin Wang<ooboqoo@gmail.com>",
   "license": "CC BY-NC 4.0",
   "bugs": {
-    "url": "https://github.com/ooboqoo/interview-coder-cn/issues"
+    "url": "https://github.com/wyffei/interview-ai/issues"
   },
-  "homepage": "https://github.com/ooboqoo/interview-coder-cn#readme",
+  "homepage": "https://github.com/wyffei/interview-ai#readme",
   "dependencies": {
     "@ai-sdk/openai-compatible": "^1.0.10",
     "@electron-toolkit/preload": "^3.0.2",

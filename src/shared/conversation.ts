@@ -5,13 +5,26 @@
 /** `auto` asks for a hint as soon as the other side finishes a sentence; `manual` waits for the shortcut */
 export type HintMode = 'auto' | 'manual'
 
-/** One sentence of the other side, as the speech recogniser reports it */
+/**
+ * Who said a sentence. System audio only ever carries the other side; a
+ * microphone (手机面试模式) hears both, and the user says which is talking
+ */
+export type Speaker = 'other' | 'me'
+
+/** One sentence, as the speech recogniser reports it */
 export interface Utterance {
   /** Increasing from 1 within a conversation */
   id: number
   text: string
   /** False while the recogniser is still revising it */
   final: boolean
+  /** Absent for the other side; `me` is context only, never hinted */
+  speaker?: 'me'
+}
+
+/** The user's own sentence (手机面试模式): context for a hint, never what it is for */
+export function isMine(utterance: Utterance): boolean {
+  return utterance.speaker === 'me'
 }
 
 export type HintStatus =
@@ -56,6 +69,8 @@ export interface HintReview {
   score?: number
   /** Other entries sent along */
   related: number
+  /** `direct` from the 面试准备 page (the prepared self-introduction), not the 复盘库 */
+  briefing?: boolean
 }
 
 export interface ConversationSnapshot {
@@ -65,6 +80,8 @@ export interface ConversationSnapshot {
   listening: boolean
   /** Keywords the user typed to go along with every hint (see main `setNote`) */
   note: string
+  /** Who new sentences are put down to (手机面试模式) */
+  speaker: Speaker
 }
 
 /** The preset prompts tell the model to answer this when nothing needs a reply */

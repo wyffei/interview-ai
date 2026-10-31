@@ -1,17 +1,28 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { Mic, MicOff, PointerOff } from 'lucide-react'
+import { Mic, MicOff, PointerOff, UserRound, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { TOOLBAR_ACTIONS, type ToolbarAction, type ToolbarActionName } from '@/lib/toolbar-actions'
+import {
+  PHONE_MODE_ACTIONS,
+  TOOLBAR_ACTIONS,
+  type ToolbarAction,
+  type ToolbarActionName
+} from '@/lib/toolbar-actions'
 import { WindowResizeHandles } from '@/components/WindowResizeHandles'
 import { applyTheme } from '@/lib/theme'
 import { useAppStore } from '@/lib/store/app'
 import type { HintMode } from '@/lib/store/settings'
+import type { Speaker } from '../../../shared/conversation'
 
 /** Mirrors `.overlay-toolbar` in main.css: `p-2` around the buttons */
 const BAR_PADDING = 8
 
-type ToolbarStatus = { listening: boolean; hintMode: HintMode }
+type ToolbarStatus = {
+  listening: boolean
+  hintMode: HintMode
+  phoneMode: boolean
+  speaker: Speaker
+}
 
 const HINT_MODES: { value: HintMode; label: string }[] = [
   { value: 'auto', label: '自动' },
@@ -25,11 +36,18 @@ const HINT_MODES: { value: HintMode; label: string }[] = [
  */
 export function OverlayToolbar() {
   const [hoverDelay, setHoverDelay] = useState(0)
-  const [status, setStatus] = useState<ToolbarStatus>({ listening: false, hintMode: 'auto' })
+  const [status, setStatus] = useState<ToolbarStatus>({
+    listening: false,
+    hintMode: 'auto',
+    phoneMode: false,
+    speaker: 'other'
+  })
   const barRef = useRef<HTMLDivElement>(null)
   const syncAppState = useAppStore((state) => state.syncAppState)
   const ignoreMouse = useAppStore((state) => state.ignoreMouse)
-  const actions = TOOLBAR_ACTIONS
+  const actions = status.phoneMode
+    ? TOOLBAR_ACTIONS
+    : TOOLBAR_ACTIONS.filter(({ action }) => !PHONE_MODE_ACTIONS.has(action))
   const visibleCount = useVisibleActionCount(barRef, actions.length, [status, ignoreMouse])
 
   // Listening and the hint mode are owned by the main window; main relays them
@@ -88,7 +106,7 @@ export function OverlayToolbar() {
   )
 }
 
-/** Icon with its text beside it; listening, hint mode and click-through show their state */
+/** Icon with its text beside it; listening, hint mode, speaker and click-through show their state */
 function ButtonContent({
   item: { action, Icon, text },
   status,
@@ -128,6 +146,19 @@ function ButtonContent({
       </span>
     )
   }
+  if (action === 'toggleSpeaker') {
+    return status.speaker === 'me' ? (
+      <span className="flex items-center gap-1 text-amber-500">
+        <UserRound className="size-3.5" />
+        我在说
+      </span>
+    ) : (
+      <>
+        <UsersRound className="size-3.5" />
+        对方在说
+      </>
+    )
+  }
   if (action === 'ignoreOrEnableMouse' && ignoreMouse) {
     return (
       <>
@@ -163,8 +194,14 @@ function useVisibleActionCount(
     if (!bar) return
 
     const measure = () => {
-      const right = bar.getBoundingClientRect().right - BAR_PADDING
+      const box = bar.getBoundingClientRect()
+      const right = box.right - BAR_PADDING
       const buttons = Array.from(bar.querySelectorAll<HTMLElement>(':scope > button'))
+      // Hidden buttons keep their room, so the last one's edge is what all of them need
+      const last = buttons.at(-1)
+      if (last) {
+        void window.api.fitToolbarWidth(last.getBoundingClientRect().right - box.left + BAR_PADDING)
+      }
       let fits = 0
       // A pixel of slack for fractional display scaling
       while (fits < buttons.length && buttons[fits].getBoundingClientRect().right <= right + 1) {

@@ -3,7 +3,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { settings } from './settings'
-import { NO_REPLY, type HintCard, type Utterance } from '../shared/conversation'
+import { NO_REPLY, isMine, type HintCard, type Utterance } from '../shared/conversation'
+import type { Briefing } from '../shared/briefing'
 
 /**
  * The conversation's record on disk: one Markdown file per conversation, named after
@@ -16,6 +17,8 @@ export interface ConversationRecord {
   startedAt: number
   utterances: Utterance[]
   hints: HintCard[]
+  /** The interview's 面试准备: target company, JD and 行业卡片 */
+  briefing?: Briefing
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -44,6 +47,32 @@ function hintLabel(card: HintCard): string {
 }
 
 /**
+ * What the interview was prepared with, ahead of the conversation. A card still
+ * being written is left out; the next save after it finishes has it
+ */
+function formatBriefing(briefing: Briefing | undefined): string {
+  if (!briefing) return ''
+  const card = briefing.status === 'streaming' ? '' : briefing.card.trim()
+  const parts: string[] = []
+  if (briefing.company || briefing.jd.trim()) {
+    parts.push('## 目标岗位')
+    if (briefing.company) parts.push(`**公司**：${briefing.company}`)
+    if (briefing.jd.trim()) parts.push('**岗位 JD**', briefing.jd.trim())
+  }
+  if (card) {
+    const source = [briefing.model, briefing.searched ? '联网搜索' : '未联网']
+      .filter(Boolean)
+      .join(' · ')
+    // One level down, under the section's own heading
+    parts.push('## 行业卡片', `*${source}*`, card.replace(/^(#{1,5}) /gm, '#$1 '))
+  }
+  if (briefing.introStatus === 'done' && briefing.intro.trim()) {
+    parts.push('## 自我介绍', briefing.intro.trim())
+  }
+  return parts.join('\n\n')
+}
+
+/**
  * The conversation as rounds: what the other side said, as a quote, then the
  * hint written for it. Hints with nothing to keep (failed, withdrawn,
  * 「（无需回应）」) are left out, and the sentences they covered join the next
@@ -52,7 +81,8 @@ function hintLabel(card: HintCard): string {
 export function formatConversation({
   startedAt,
   utterances,
-  hints
+  hints,
+  briefing
 }: ConversationRecord): string | null {
   const spoken = utterances.filter((u) => u.text.trim())
   const shown = hints
@@ -64,12 +94,19 @@ export function formatConversation({
   if (spoken.length === 0 && shown.length === 0) return null
 
   const rounds: string[] = []
-  let heard: string[] = []
+  let heard: Utterance[] = []
   const closeRound = (card?: HintCard) => {
     const parts: string[] = []
-    if (heard.length > 0) {
-      parts.push('**对方**', heard.map((text) => `> ${text}`).join('\n>\n'))
-    }
+    // Consecutive sentences of one speaker share a quote (手机面试模式 hears both)
+    heard.forEach((utterance, i) => {
+      // A sentence is one line from the recogniser; a stray line break would end the quote
+      const line = `> ${utterance.text.trim().replace(/\s*\n\s*/g, ' ')}`
+      if (i > 0 && isMine(heard[i - 1]) === isMine(utterance)) {
+        parts[parts.length - 1] += `\n>\n${line}`
+      } else {
+        parts.push(isMine(utterance) ? '**我**' : '**对方**', line)
+      }
+    })
     if (card) parts.push(hintLabel(card), card.text.trim())
     rounds.push(parts.join('\n\n'))
     heard = []
@@ -78,13 +115,16 @@ export function formatConversation({
   let next = 0
   for (const utterance of spoken) {
     while (next < shown.length && shown[next].toId < utterance.id) closeRound(shown[next++])
-    // A sentence is one line from the recogniser; a stray line break would end the quote
-    heard.push(utterance.text.trim().replace(/\s*\n\s*/g, ' '))
+    heard.push(utterance)
   }
   while (next < shown.length) closeRound(shown[next++])
   if (heard.length > 0) closeRound()
 
-  return `${title(startedAt)}\n\n${rounds.join('\n\n---\n\n')}\n`
+  const prepared = formatBriefing(briefing)
+  const conversation = rounds.join('\n\n---\n\n')
+  // With the preparation ahead of it, the conversation gets a heading of its own
+  const body = prepared ? `${prepared}\n\n## 对话\n\n${conversation}` : conversation
+  return `${title(startedAt)}\n\n${body}\n`
 }
 
 /** Writes in the order they were asked for, so an older record never lands over a newer one */

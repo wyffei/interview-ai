@@ -9,7 +9,7 @@ import {
   sendToToolbar
 } from './toolbar-window'
 import { state, setPageChangeHandler } from './state'
-import { requestHint, stopHints, clearConversation } from './conversation'
+import { requestHint, stopHints, requestClear, toggleSpeaker } from './conversation'
 
 type Shortcut = {
   action: string
@@ -26,8 +26,6 @@ enum ShortcutStatus {
 }
 
 const MOVE_STEP = 200
-/** Opacity delta per shortcut press, matching the settings slider step */
-const OPACITY_STEP = 0.05
 const shortcuts: Record<string, Shortcut> = {}
 
 const FRONT_REASSERT_DURATION = 8000
@@ -175,10 +173,11 @@ function keepWindowInFront(window: BrowserWindow) {
  * Opacity is owned by the renderer settings store (persisted + synced back to
  * main), so the shortcut only asks the renderer to step it.
  */
-function adjustOpacity(delta: number) {
+function adjustOpacity(direction: 1 | -1) {
   const mainWindow = global.mainWindow
   if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
-  mainWindow.webContents.send('adjust-opacity', delta)
+  // One level up or down; the renderer owns the levels
+  mainWindow.webContents.send('adjust-opacity', direction)
 }
 
 /**
@@ -294,11 +293,11 @@ const callbacks: Record<string, () => void> = {
   },
 
   increaseOpacity: () => {
-    adjustOpacity(OPACITY_STEP)
+    adjustOpacity(1)
   },
 
   decreaseOpacity: () => {
-    adjustOpacity(-OPACITY_STEP)
+    adjustOpacity(-1)
   },
 
   pageUp: () => {
@@ -349,7 +348,7 @@ const callbacks: Record<string, () => void> = {
 
   // Starts the conversation over
   clearTranscription: () => {
-    if (state.inConversationPage) clearConversation()
+    if (state.inConversationPage) requestClear()
   },
 
   // A hint now, whatever automatic hinting is waiting for
@@ -362,6 +361,11 @@ const callbacks: Record<string, () => void> = {
     const mainWindow = global.mainWindow
     if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
     mainWindow.webContents.send('toggle-hint-mode')
+  },
+
+  // 手机面试模式: 我在说 ⇄ 对方在说. Not page-bound: listening goes on everywhere
+  toggleSpeaker: () => {
+    toggleSpeaker()
   }
 }
 
@@ -380,7 +384,8 @@ const clickableActions = new Set([
   'clearTranscription',
   'cycleScene',
   'generateHint',
-  'toggleHintMode'
+  'toggleHintMode',
+  'toggleSpeaker'
 ])
 
 function unregisterShortcut(action: string) {
