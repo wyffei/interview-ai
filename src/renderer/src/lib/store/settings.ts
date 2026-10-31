@@ -3,32 +3,69 @@ import { persist } from 'zustand/middleware'
 import techInterviewPrompt from './prompts/tech-interview.md?raw'
 import behavioralInterviewPrompt from './prompts/behavioral-interview.md?raw'
 import englishInterviewPrompt from './prompts/english-interview.md?raw'
+import generalQaPrompt from './prompts/general-qa.md?raw'
+import codingPrompt from './prompts/coding.md?raw'
+import englishExamPrompt from './prompts/english-exam.md?raw'
+import aptitudeTestPrompt from './prompts/aptitude-test.md?raw'
 import { DEFAULT_THEME, type Theme } from '../theme'
 import { normalizeBaseURL, resolveLinkedModel, type ModelSwitchReason } from '../providers'
 import { createProfile, type ApiProfile } from '../api-profiles'
 import { fileStorage } from './file-storage'
 import type { HintMode } from '../../../../shared/conversation'
+import type { CaptureRegion } from '../../../../shared/capture-region'
 
 export type { Theme }
 export type { ApiProfile }
 export type { HintMode }
+
+/** The two pages: hints for what is heard, or answers about screenshots */
+export type AppMode = 'conversation' | 'screenshot'
 
 export interface PromptScene {
   id: string
   name: string
   prompt: string
   isPreset: boolean
+  /** The mode the scene belongs to; scenes saved without one are the hints' */
+  mode?: AppMode
 }
 
 /** The scene to fall back to when the active one is gone */
 export const TECH_INTERVIEW_SCENE_ID = 'tech-interview'
+/** 截图模式's first scene, which a new install starts on */
+export const GENERAL_QA_SCENE_ID = 'general-qa'
 
 /** Default prompts for all preset scenes, maintained as Markdown files under ./prompts */
 export const PRESET_SCENE_PROMPTS: Record<string, string> = {
   [TECH_INTERVIEW_SCENE_ID]: techInterviewPrompt,
   'behavioral-interview': behavioralInterviewPrompt,
-  'english-interview': englishInterviewPrompt
+  'english-interview': englishInterviewPrompt,
+  [GENERAL_QA_SCENE_ID]: generalQaPrompt,
+  coding: codingPrompt,
+  'english-exam': englishExamPrompt,
+  'aptitude-test': aptitudeTestPrompt
 }
+
+/** Each mode's fallback scene */
+const DEFAULT_SCENE_ID: Record<AppMode, string> = {
+  conversation: TECH_INTERVIEW_SCENE_ID,
+  screenshot: GENERAL_QA_SCENE_ID
+}
+
+export function sceneMode(scene: PromptScene): AppMode {
+  return scene.mode ?? 'conversation'
+}
+
+/** A mode's scenes, in list order */
+export function scenesOf(scenes: PromptScene[], mode: AppMode): PromptScene[] {
+  return scenes.filter((s) => sceneMode(s) === mode)
+}
+
+/** The store keys holding a mode's active scene and the prompt derived from it */
+const SCENE_KEYS = {
+  conversation: { sceneId: 'conversationSceneId', prompt: 'conversationPrompt' },
+  screenshot: { sceneId: 'screenshotSceneId', prompt: 'screenshotPrompt' }
+} as const
 
 const createPresetScenes = (): PromptScene[] => [
   {
@@ -48,6 +85,34 @@ const createPresetScenes = (): PromptScene[] => [
     name: '英文面试',
     prompt: PRESET_SCENE_PROMPTS['english-interview'],
     isPreset: true
+  },
+  {
+    id: GENERAL_QA_SCENE_ID,
+    name: '通用问答',
+    prompt: PRESET_SCENE_PROMPTS[GENERAL_QA_SCENE_ID],
+    isPreset: true,
+    mode: 'screenshot'
+  },
+  {
+    id: 'coding',
+    name: '解算法题',
+    prompt: PRESET_SCENE_PROMPTS.coding,
+    isPreset: true,
+    mode: 'screenshot'
+  },
+  {
+    id: 'english-exam',
+    name: '英语考试',
+    prompt: PRESET_SCENE_PROMPTS['english-exam'],
+    isPreset: true,
+    mode: 'screenshot'
+  },
+  {
+    id: 'aptitude-test',
+    name: '能力测评',
+    prompt: PRESET_SCENE_PROMPTS['aptitude-test'],
+    isPreset: true,
+    mode: 'screenshot'
   }
 ]
 
@@ -62,24 +127,37 @@ function assembleScenes(saved: PromptScene[], removed: string[]): PromptScene[] 
       .filter((p) => !removed.includes(p.id))
       .map((p) => {
         const kept = saved.find((s) => s.id === p.id)
-        // An emptied (or restored) preset gets its default prompt back
-        return kept?.prompt.trim() ? kept : p
+        // An emptied (or restored) preset gets its default prompt back. Its
+        // mode always comes from the table, never from the saved copy
+        return kept?.prompt.trim() ? { ...kept, mode: p.mode } : p
       }),
     ...saved.filter((s) => !s.isPreset)
   ]
 }
 
-/** The system prompt main sends hints with, derived from the active scene */
-function composePrompt(scenes: PromptScene[], sceneId: string): string {
-  const scene = scenes.find((s) => s.id === sceneId)
-  if (!scene) return PRESET_SCENE_PROMPTS[TECH_INTERVIEW_SCENE_ID]
+/** The system prompt main sends a mode's requests with, derived from its active scene */
+function composePrompt(scenes: PromptScene[], sceneId: string, mode: AppMode): string {
+  const scene = scenes.find((s) => s.id === sceneId && sceneMode(s) === mode)
+  if (!scene) return PRESET_SCENE_PROMPTS[DEFAULT_SCENE_ID[mode]]
   // An emptied preset scene falls back to its default prompt
   return scene.prompt.trim() || PRESET_SCENE_PROMPTS[scene.id] || ''
 }
 
-/** Whether any preset scene was deleted and can be restored */
-export function hasRemovedPresets(removedIds: string[]): boolean {
-  return createPresetScenes().some((p) => removedIds.includes(p.id))
+/** Both modes' prompts, recomputed after any change to the scene list */
+function composePrompts(
+  scenes: PromptScene[],
+  conversationSceneId: string,
+  screenshotSceneId: string
+): { conversationPrompt: string; screenshotPrompt: string } {
+  return {
+    conversationPrompt: composePrompt(scenes, conversationSceneId, 'conversation'),
+    screenshotPrompt: composePrompt(scenes, screenshotSceneId, 'screenshot')
+  }
+}
+
+/** Whether any of a mode's preset scenes was deleted and can be restored */
+export function hasRemovedPresets(removedIds: string[], mode: AppMode): boolean {
+  return scenesOf(createPresetScenes(), mode).some((p) => removedIds.includes(p.id))
 }
 
 /** Immutably replace one profile, leaving the rest untouched */
@@ -92,7 +170,14 @@ function patchProfile(
 }
 
 /** The live fields that are a mirror of the active profile */
-const CREDENTIAL_KEYS = ['apiBaseURL', 'apiKey', 'apiHeaders', 'model', 'disableThinking'] as const
+const CREDENTIAL_KEYS = [
+  'apiBaseURL',
+  'apiKey',
+  'apiHeaders',
+  'model',
+  'disableThinking',
+  'enableThinking'
+] as const
 
 /** Same as `patchProfile`, but a no-op when `id` matches nothing */
 function patchActiveProfile(
@@ -120,6 +205,8 @@ interface Settings {
   activeProfileId: string
   /** The profile hints are asked for with; text only, so a fast model suits it */
   conversationProfileId: string
+  /** The profile 截图模式 sends screenshots with; its model has to take images */
+  screenshotProfileId: string
   /**
    * Whether the user has ever saved an API key. The welcome dialog keys off
    * this rather than the live `apiKey`, so switching to a profile that is still
@@ -135,25 +222,28 @@ interface Settings {
   model: string
   /** The active profile's 「关闭思考」 */
   disableThinking: boolean
+  /** The active profile's 「开启思考」 */
+  enableThinking: boolean
   /** Custom models created before they were kept per API Base URL; offered for every URL */
   customModels: string[]
   /** Custom models the user created, keyed by normalized API Base URL */
   customModelsByBaseURL: Record<string, string[]>
   /** Last model used with each normalized API Base URL, restored when switching back */
   modelByBaseURL: Record<string, string>
-  /** The system prompt, derived from `conversationSceneId` */
+  /** The hints' system prompt, derived from `conversationSceneId` */
   conversationPrompt: string
+  /** 截图模式's system prompt, derived from `screenshotSceneId` */
+  screenshotPrompt: string
 
   scenes: PromptScene[]
   conversationSceneId: string
+  screenshotSceneId: string
   /** Preset scenes the user deleted; kept so the next load does not bring them back */
   removedPresetSceneIds: string[]
 
   opacity: number
   /** Allow resizing the main window and overlay toolbar */
   resizable: boolean
-  /** Show the click-through overlay toolbar above the main window */
-  showOverlayToolbar: boolean
   /** Dwell time in ms before hovering a toolbar button fires it; 0 disables hover triggering */
   toolbarHoverDelay: number
 
@@ -189,6 +279,16 @@ interface Settings {
   conversationAutoSave: boolean
   /** 对话记录保存目录；为空时用 文档/InterviewCoder */
   conversationSaveDir: string
+
+  /** The mode page shown last, opened on the next start and by the back buttons */
+  lastMode: AppMode
+  /** 截图模式: crop every screenshot to this area of one screen; null for the whole screen */
+  captureRegion: CaptureRegion | null
+  /**
+   * 截图模式: keep each question (read off the screenshots by the model), its
+   * answer and a reason in a Markdown file in `conversationSaveDir`
+   */
+  screenshotAutoSave: boolean
 }
 
 /** A model change made on the user's behalf when the API Base URL changed */
@@ -216,8 +316,8 @@ interface SettingsStore extends Settings {
   removeProfile: (id: string) => boolean
   /** Ask for hints with this profile */
   setConversationProfile: (id: string) => void
-  /** Step to the next profile, for the keyboard shortcut. Null when there is nothing to step to */
-  cycleProfile: (step?: number) => ApiProfile | null
+  /** Send screenshots with this profile */
+  setScreenshotProfile: (id: string) => void
   /** Record that an API key has been saved, so the welcome dialog stays away */
   markApiConfigured: () => void
   /**
@@ -232,16 +332,16 @@ interface SettingsStore extends Settings {
   /** Step the window opacity one level up (`direction` > 0) or down, within [OPACITY_MIN, OPACITY_MAX] */
   adjustOpacity: (direction: number) => void
   syncSettings: (settings: Partial<Settings>) => void
-  /** Make a scene the active one */
+  /** Make a scene its mode's active one */
   setActiveScene: (id: string) => void
-  /** Step to the next scene, wrapping at the end, and report its name */
-  cycleScene: () => string
+  /** Step a mode to its next scene, wrapping at the end, and report its name */
+  cycleScene: (mode?: AppMode) => string
   updateScenePrompt: (id: string, prompt: string) => void
-  addScene: (name: string) => string
-  /** Delete a scene, preset or not; refuses to delete the last one */
+  addScene: (name: string, mode?: AppMode) => string
+  /** Delete a scene, preset or not; refuses to delete the last one of its mode */
   removeScene: (id: string) => boolean
-  /** Bring back the deleted preset scenes, with their default prompts */
-  restorePresetScenes: () => void
+  /** Bring back a mode's deleted preset scenes, with their default prompts */
+  restorePresetScenes: (mode?: AppMode) => void
 }
 
 const defaultSettings: Settings = {
@@ -251,6 +351,8 @@ const defaultSettings: Settings = {
   activeProfileId: 'profile-default',
   // Filled in on rehydrate: starts out on the profile being edited
   conversationProfileId: '',
+  // Filled in on rehydrate: starts out on the hints' profile
+  screenshotProfileId: '',
   hasConfiguredApi: false,
   apiBaseURL: '',
   customBaseURLs: [],
@@ -258,17 +360,19 @@ const defaultSettings: Settings = {
   apiHeaders: '',
   model: '',
   disableThinking: false,
+  enableThinking: false,
   customModels: [],
   customModelsByBaseURL: {},
   modelByBaseURL: {},
   conversationPrompt: PRESET_SCENE_PROMPTS[TECH_INTERVIEW_SCENE_ID],
+  screenshotPrompt: PRESET_SCENE_PROMPTS[GENERAL_QA_SCENE_ID],
   scenes: createPresetScenes(),
   conversationSceneId: TECH_INTERVIEW_SCENE_ID,
+  screenshotSceneId: GENERAL_QA_SCENE_ID,
   removedPresetSceneIds: [],
 
   opacity: 0.75,
   resizable: true,
-  showOverlayToolbar: true,
   toolbarHoverDelay: 1000,
 
   dashscopeApiKey: '',
@@ -287,7 +391,11 @@ const defaultSettings: Settings = {
   briefingWebSearch: true,
   briefingIntroPrompt: '',
   conversationAutoSave: false,
-  conversationSaveDir: ''
+  conversationSaveDir: '',
+
+  lastMode: 'conversation',
+  captureRegion: null,
+  screenshotAutoSave: true
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -358,7 +466,8 @@ export const useSettingsStore = create<SettingsStore>()(
             apiKey: profile.apiKey,
             apiHeaders: profile.apiHeaders,
             model: profile.model,
-            disableThinking: profile.disableThinking
+            disableThinking: profile.disableThinking,
+            enableThinking: profile.enableThinking
           }
         })
       },
@@ -373,7 +482,8 @@ export const useSettingsStore = create<SettingsStore>()(
           apiKey: source?.apiKey ?? '',
           apiHeaders: source?.apiHeaders ?? '',
           model: source?.model ?? '',
-          disableThinking: source?.disableThinking ?? false
+          disableThinking: source?.disableThinking ?? false,
+          enableThinking: source?.enableThinking ?? false
         })
         // Only opened for editing: the profile hints use is left alone
         set({
@@ -383,7 +493,8 @@ export const useSettingsStore = create<SettingsStore>()(
           apiKey: profile.apiKey,
           apiHeaders: profile.apiHeaders,
           model: profile.model,
-          disableThinking: profile.disableThinking
+          disableThinking: profile.disableThinking,
+          enableThinking: profile.enableThinking
         })
         return profile.id
       },
@@ -411,7 +522,8 @@ export const useSettingsStore = create<SettingsStore>()(
             ...(patch.model !== undefined ? { model: patch.model } : {}),
             ...(patch.disableThinking !== undefined
               ? { disableThinking: patch.disableThinking }
-              : {})
+              : {}),
+            ...(patch.enableThinking !== undefined ? { enableThinking: patch.enableThinking } : {})
           }
         })
       },
@@ -422,11 +534,13 @@ export const useSettingsStore = create<SettingsStore>()(
         if (index === -1) return false
 
         const apiProfiles = state.apiProfiles.filter((p) => p.id !== id)
-        // Hints that used it hand over to its neighbour
+        // A mode that used it hands over to its neighbour
         const next = apiProfiles[Math.min(index, apiProfiles.length - 1)]
         const modeProfiles = {
           conversationProfileId:
-            state.conversationProfileId === id ? next.id : state.conversationProfileId
+            state.conversationProfileId === id ? next.id : state.conversationProfileId,
+          screenshotProfileId:
+            state.screenshotProfileId === id ? next.id : state.screenshotProfileId
         }
         if (id !== state.activeProfileId) {
           set({ apiProfiles, ...modeProfiles })
@@ -441,7 +555,8 @@ export const useSettingsStore = create<SettingsStore>()(
           apiKey: next.apiKey,
           apiHeaders: next.apiHeaders,
           model: next.model,
-          disableThinking: next.disableThinking
+          disableThinking: next.disableThinking,
+          enableThinking: next.enableThinking
         })
         return true
       },
@@ -449,19 +564,9 @@ export const useSettingsStore = create<SettingsStore>()(
         if (!get().apiProfiles.some((p) => p.id === id)) return
         set({ conversationProfileId: id })
       },
-      cycleProfile: (step = 1) => {
-        const state = get()
-        const currentId = state.conversationProfileId
-        const candidates = state.apiProfiles
-        if (candidates.length < 2) return null
-        const index = Math.max(
-          0,
-          candidates.findIndex((p) => p.id === currentId)
-        )
-        const count = candidates.length
-        const next = candidates[(((index + step) % count) + count) % count]
-        get().setConversationProfile(next.id)
-        return next
+      setScreenshotProfile: (id) => {
+        if (!get().apiProfiles.some((p) => p.id === id)) return
+        set({ screenshotProfileId: id })
       },
       markApiConfigured: () => {
         if (!get().hasConfiguredApi) set({ hasConfiguredApi: true })
@@ -521,15 +626,18 @@ export const useSettingsStore = create<SettingsStore>()(
       },
       setActiveScene: (id) => {
         set((state) => {
-          if (!state.scenes.some((s) => s.id === id)) return {}
-          return { conversationSceneId: id, conversationPrompt: composePrompt(state.scenes, id) }
+          const scene = state.scenes.find((s) => s.id === id)
+          if (!scene) return {}
+          const mode = sceneMode(scene)
+          const keys = SCENE_KEYS[mode]
+          return { [keys.sceneId]: id, [keys.prompt]: composePrompt(state.scenes, id, mode) }
         })
       },
-      cycleScene: () => {
+      cycleScene: (mode = 'conversation') => {
         const state = get()
-        const scenes = state.scenes
+        const scenes = scenesOf(state.scenes, mode)
         if (scenes.length === 0) return ''
-        const activeId = state.conversationSceneId
+        const activeId = state[SCENE_KEYS[mode].sceneId]
         // An unknown active id starts over from the first scene
         const next = scenes[(scenes.findIndex((s) => s.id === activeId) + 1) % scenes.length]
         get().setActiveScene(next.id)
@@ -540,15 +648,19 @@ export const useSettingsStore = create<SettingsStore>()(
           const scenes = state.scenes.map((s) => (s.id === id ? { ...s, prompt } : s))
           return {
             scenes,
-            conversationPrompt: composePrompt(scenes, state.conversationSceneId)
+            ...composePrompts(scenes, state.conversationSceneId, state.screenshotSceneId)
           }
         })
       },
-      addScene: (name) => {
+      addScene: (name, mode = 'conversation') => {
         const id = `custom-${Date.now()}`
         set((state) => {
-          const scenes: PromptScene[] = [...state.scenes, { id, name, prompt: '', isPreset: false }]
-          return { scenes, conversationSceneId: id, conversationPrompt: composePrompt(scenes, id) }
+          // The hints' scenes are saved without a mode, as they always were
+          const scene: PromptScene = { id, name, prompt: '', isPreset: false }
+          if (mode === 'screenshot') scene.mode = mode
+          const scenes = [...state.scenes, scene]
+          const keys = SCENE_KEYS[mode]
+          return { scenes, [keys.sceneId]: id, [keys.prompt]: composePrompt(scenes, id, mode) }
         })
         return id
       },
@@ -556,20 +668,24 @@ export const useSettingsStore = create<SettingsStore>()(
         const state = get()
         const removed = state.scenes.find((s) => s.id === id)
         if (!removed) return false
-        // One must remain, or there is nothing to pick and no prompt to edit
-        if (state.scenes.length <= 1) return false
+        const mode = sceneMode(removed)
+        const siblings = scenesOf(state.scenes, mode)
+        // One must remain per mode, or there is nothing to pick and no prompt to edit
+        if (siblings.length <= 1) return false
 
         const scenes = state.scenes.filter((s) => s.id !== id)
-        // Removing the active scene hands over to its neighbour
-        const index = state.scenes.findIndex((s) => s.id === id)
+        const keys = SCENE_KEYS[mode]
+        // Removing the active scene hands over to its neighbour in the same mode
+        const index = siblings.findIndex((s) => s.id === id)
+        const remaining = siblings.filter((s) => s.id !== id)
         const activeId =
-          state.conversationSceneId === id
-            ? scenes[Math.min(index, scenes.length - 1)].id
-            : state.conversationSceneId
+          state[keys.sceneId] === id
+            ? remaining[Math.min(index, remaining.length - 1)].id
+            : state[keys.sceneId]
         set({
           scenes,
-          conversationSceneId: activeId,
-          conversationPrompt: composePrompt(scenes, activeId),
+          [keys.sceneId]: activeId,
+          [keys.prompt]: composePrompt(scenes, activeId, mode),
           // Presets are rebuilt on every load, so a deleted one must be remembered
           ...(removed.isPreset
             ? { removedPresetSceneIds: [...state.removedPresetSceneIds, id] }
@@ -577,13 +693,17 @@ export const useSettingsStore = create<SettingsStore>()(
         })
         return true
       },
-      restorePresetScenes: () => {
+      restorePresetScenes: (mode = 'conversation') => {
         set((state) => {
-          const scenes = assembleScenes(state.scenes, [])
+          const presetIds = new Set(scenesOf(createPresetScenes(), mode).map((s) => s.id))
+          const removedPresetSceneIds = state.removedPresetSceneIds.filter(
+            (id) => !presetIds.has(id)
+          )
+          const scenes = assembleScenes(state.scenes, removedPresetSceneIds)
           return {
             scenes,
-            removedPresetSceneIds: [],
-            conversationPrompt: composePrompt(scenes, state.conversationSceneId)
+            removedPresetSceneIds,
+            ...composePrompts(scenes, state.conversationSceneId, state.screenshotSceneId)
           }
         })
       }
@@ -616,20 +736,32 @@ export const useSettingsStore = create<SettingsStore>()(
           ? state.removedPresetSceneIds
           : []
         state.scenes = assembleScenes(persistedScenes, state.removedPresetSceneIds)
-        // Deleting refuses the last scene, but a hand-edited store could still
-        // arrive without any; the presets are the only sensible offer then
-        if (state.scenes.length === 0) {
-          state.removedPresetSceneIds = []
-          state.scenes = assembleScenes(persistedScenes, [])
+        for (const mode of ['conversation', 'screenshot'] as const) {
+          // Deleting refuses a mode's last scene, but a hand-edited store could
+          // still arrive without any; its presets are the only sensible offer then
+          if (scenesOf(state.scenes, mode).length === 0) {
+            const presetIds = new Set(scenesOf(createPresetScenes(), mode).map((s) => s.id))
+            state.removedPresetSceneIds = state.removedPresetSceneIds.filter(
+              (id) => !presetIds.has(id)
+            )
+            state.scenes = assembleScenes(persistedScenes, state.removedPresetSceneIds)
+          }
+          const key = SCENE_KEYS[mode].sceneId
+          const scenes = scenesOf(state.scenes, mode)
+          if (!scenes.some((s) => s.id === state[key])) state[key] = scenes[0].id
         }
-        if (!state.scenes.some((s) => s.id === state.conversationSceneId)) {
-          state.conversationSceneId = state.scenes[0].id
-        }
-        state.conversationPrompt = composePrompt(state.scenes, state.conversationSceneId)
+        Object.assign(
+          state,
+          composePrompts(state.scenes, state.conversationSceneId, state.screenshotSceneId)
+        )
         state.apiProfiles = reconcileApiProfiles(state)
         // Until one is picked, hints use the profile being edited
         if (!state.apiProfiles.some((p) => p.id === state.conversationProfileId)) {
           state.conversationProfileId = state.activeProfileId
+        }
+        // and screenshots the hints' one, until the user picks one that takes images
+        if (!state.apiProfiles.some((p) => p.id === state.screenshotProfileId)) {
+          state.screenshotProfileId = state.conversationProfileId
         }
         return state
       }
@@ -650,7 +782,8 @@ function reconcileApiProfiles(state: Settings): ApiProfile[] {
   const profiles = (Array.isArray(state.apiProfiles) ? state.apiProfiles : []).map((p) => ({
     ...p,
     apiHeaders: p.apiHeaders ?? '',
-    disableThinking: p.disableThinking ?? false
+    disableThinking: p.disableThinking ?? false,
+    enableThinking: p.enableThinking ?? false
   }))
   const active = profiles.find((p) => p.id === state.activeProfileId)
 
@@ -662,7 +795,8 @@ function reconcileApiProfiles(state: Settings): ApiProfile[] {
       apiKey: state.apiKey ?? '',
       apiHeaders: state.apiHeaders ?? '',
       model: state.model ?? '',
-      disableThinking: false
+      disableThinking: false,
+      enableThinking: false
     }
     state.activeProfileId = seeded.id
     state.hasConfiguredApi = !!seeded.apiKey.trim()
@@ -679,6 +813,7 @@ function reconcileApiProfiles(state: Settings): ApiProfile[] {
     state.apiHeaders = first.apiHeaders
     state.model = first.model
     state.disableThinking = first.disableThinking
+    state.enableThinking = first.enableThinking
     state.hasConfiguredApi = hasAnyApiKey(profiles)
     return profiles
   }
@@ -702,6 +837,7 @@ function reconcileApiProfiles(state: Settings): ApiProfile[] {
   // predates them to adopt
   state.apiHeaders = active.apiHeaders
   state.disableThinking = active.disableThinking
+  state.enableThinking = active.enableThinking
 
   // A profile saved before these fields existed adopts whatever the flat
   // fields held, so an upgrade never silently blanks the user's credentials

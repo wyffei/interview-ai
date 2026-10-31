@@ -1,9 +1,9 @@
 import { streamText, type ModelMessage, type TextStreamPart, type ToolSet } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { settings, getHintProfile } from './settings'
-import { DEFAULT_API_BASE_URL, type ApiProfile } from '../shared/api-profile'
+import { settings, getHintProfile, getScreenshotProfile } from './settings'
+import { DEFAULT_API_BASE_URL, thinkingModeOf, type ApiProfile } from '../shared/api-profile'
 import { buildRequestHeaders } from '../shared/request-headers'
-import { createThinkingOffFetch } from './thinking'
+import { createThinkingFetch, type ThinkingMode } from './thinking'
 import { getKnowledgePrompt } from './knowledge'
 import { getBriefingPrompt } from './briefing'
 import type { StreamChunk } from './stream'
@@ -20,14 +20,15 @@ function getSystemPrompt() {
   )
 }
 
-/** Tell the user once that the active model ignores the profile's 「关闭思考」 */
-function reportThinkingRefused(model: string) {
+/** Tell the user once that the active model ignores the profile's 「关闭思考」 / 「开启思考」 */
+function reportThinkingRefused(model: string, mode: ThinkingMode) {
   const mainWindow = global.mainWindow
   if (!mainWindow || mainWindow.isDestroyed()) return
-  mainWindow.webContents.send('thinking-unsupported', model)
+  mainWindow.webContents.send('thinking-unsupported', model, mode)
 }
 
 function createProvider(profile: ApiProfile, customFetch?: typeof fetch) {
+  const mode = thinkingModeOf(profile)
   // The app only ever talks OpenAI-compatible chat-completions; this provider
   // also surfaces thinking models' reasoning (`reasoning_content` / `reasoning`
   // deltas) as reasoning stream parts, which @ai-sdk/openai drops. It has no
@@ -40,8 +41,8 @@ function createProvider(profile: ApiProfile, customFetch?: typeof fetch) {
     // Only when asked for: a plain request is the one every platform accepts
     ...(customFetch
       ? { fetch: customFetch }
-      : profile.disableThinking
-        ? { fetch: createThinkingOffFetch(profile.apiBaseURL, reportThinkingRefused) }
+      : mode !== 'default'
+        ? { fetch: createThinkingFetch(mode, profile.apiBaseURL, reportThinkingRefused) }
         : {})
   })
 }
@@ -85,6 +86,31 @@ export function getHintStream(messages: ModelMessage[], abortSignal?: AbortSigna
 }
 
 /**
+ * 截图模式: an answer about the screenshots in `messages`, with that mode's own
+ * profile and scene prompt. Nothing of the interview goes along (资料库, 面试准备):
+ * the two modes are kept apart. `extraSystem` follows the scene prompt.
+ */
+export function getScreenshotStream(
+  messages: ModelMessage[],
+  abortSignal?: AbortSignal,
+  extraSystem?: string
+) {
+  const profile = getScreenshotProfile()
+  const openai = createProvider(profile)
+
+  const { fullStream } = streamText({
+    model: openai.chatModel(getModel(profile)),
+    system: [settings.screenshotPrompt, extraSystem].filter(Boolean).join('\n\n') || undefined,
+    messages,
+    abortSignal,
+    onError: (err) => {
+      throw err.error ?? err
+    }
+  })
+  return streamChunks(fullStream)
+}
+
+/**
  * A long, unhurried request (the 行业卡片, see briefing.ts): no time limit and
  * thinking left on whatever the profile says, since nobody is waiting on a
  * call. `customFetch` adds the platform's web-search fields to the body.
@@ -96,7 +122,10 @@ export function getResearchStream(
   abortSignal: AbortSignal,
   customFetch?: typeof fetch
 ) {
-  const provider = createProvider({ ...profile, disableThinking: false }, customFetch)
+  const provider = createProvider(
+    { ...profile, disableThinking: false, enableThinking: false },
+    customFetch
+  )
   const { fullStream } = streamText({
     model: provider.chatModel(getModel(profile)),
     system,

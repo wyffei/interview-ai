@@ -1,6 +1,7 @@
 /**
- * Consuming an AI text stream for a hint (conversation.ts), which maps the
- * outcome to its own IPC events.
+ * Consuming an AI text stream, shared by the hints (conversation.ts) and
+ * 截图模式's answers (screenshot.ts), which each map the outcome to their own
+ * IPC events.
  */
 
 /**
@@ -88,6 +89,23 @@ function platformErrorMessage(error: unknown): string {
 
   // Fallback to error message
   return error.message || '未知错误'
+}
+
+/**
+ * How platforms word "this model takes no images": OpenAI (`image_url is only
+ * supported by certain models`), DeepSeek (`unknown variant \`image_url\``),
+ * vLLM (`is not a multimodal model`), OpenRouter (`support image input`)…
+ * Kept narrow on purpose: an image that is merely too large must not count.
+ */
+const IMAGE_REFUSAL =
+  /image_url is only supported|unknown variant `image_url`|not a multi-?modal model|(?:does not|doesn't|not) supports? (?:image|vision)|support image input|不支持(?:图片|图像|多模态|视觉)/i
+
+/** Whether a screenshot request failed because the model does not take image input */
+export function isImageInputRefused(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const { statusCode, responseBody, message } = error as ApiError
+  if (statusCode !== undefined && statusCode !== 400 && statusCode !== 422) return false
+  return IMAGE_REFUSAL.test(`${responseBody ?? ''}\n${message}`)
 }
 
 /**

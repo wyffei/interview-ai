@@ -1,6 +1,4 @@
 import { BookOpen } from 'lucide-react'
-import ShortcutRenderer from '@/components/ShortcutRenderer'
-import { platformAlt } from '@/lib/utils/env'
 import { HelpSection } from './components'
 
 const faqs = [
@@ -8,10 +6,9 @@ const faqs = [
     question: '怎么开始用？',
     answer: (
       <span>
-        先在「设置 → AI 模型」填写 AI 平台的 API Key（建议打开「关闭思考」），在「设置 →
-        语音」填写百炼平台 API Key，然后按
-        <ShortcutRenderer shortcut={`${platformAlt}+T`} className="text-xs mx-1" />
-        开始监听。它采集的是系统音频（会议里对方的声音），自己说话不会触发提示。
+        先在「设置 → AI 模型」填写 AI 平台的 API
+        Key（出提示的配置建议把「思考」设为「关闭思考」），在「设置 → 语音」填写百炼平台 API
+        Key，然后点工具条上的「开始监听」。它采集的是系统音频（会议里对方的声音），自己说话不会触发提示。
       </span>
     )
   },
@@ -20,11 +17,8 @@ const faqs = [
     answer: (
       <span>
         默认「自动」出提示：对方说完一句话就立即生成，如果对方其实还没说完，会等说完后重新生成；
-        也可以随时按
-        <ShortcutRenderer shortcut={`${platformAlt}+G`} className="text-xs mx-1" />
-        立即出提示（没有新内容时换个说法重出），或按
-        <ShortcutRenderer shortcut={`${platformAlt}+Shift+G`} className="text-xs mx-1" />
-        切换为「手动」，只在按快捷键时出。
+        也可以随时点工具条上的「出提示」立即出提示（没有新内容时换个说法重出），或点「自动/手动」
+        切换为「手动」，只在点「出提示」时出。
       </span>
     )
   },
@@ -80,19 +74,17 @@ const faqs = [
     question: '鼠标移过窗口时，光标会不会变？',
     answer: (
       <span>
-        本工具提供了开关，可以开启或关闭鼠标穿透。开启鼠标穿透时，窗口对鼠标隐身，你需要通过快捷键来操作窗口。切换「鼠标穿透」开关的快捷键是{' '}
-        <ShortcutRenderer shortcut={`${platformAlt}+M`} className="text-xs" />{' '}
-        。窗口右下角会显示当前状态。
+        本工具提供了开关，可以开启或关闭鼠标穿透。开启鼠标穿透时，主窗口对鼠标隐身，但上方的工具条照常可以点：
+        点工具条上的「鼠标穿透」开启，点「取消穿透」关闭。
       </span>
     )
   },
   {
-    question: '不想用快捷键，可以用鼠标操作吗？',
+    question: '有快捷键吗？',
     answer: (
       <span>
-        可以。主窗口上方的「悬浮工具条」把常用操作做成了按钮，点击即可，且不会让会议窗口失焦。
-        工具条可在「设置 → 界面与隐私 →
-        悬浮工具条」中开启或关闭，各按钮的含义见上方「悬浮工具条」章节。
+        没有。应用不注册任何快捷键，所有操作都用主窗口上方「悬浮工具条」的按钮完成，点击不会让会议窗口失焦。
+        各按钮的含义见上方「悬浮工具条」章节。
       </span>
     )
   },
@@ -100,9 +92,7 @@ const faqs = [
     question: '怎么清空对话重新开始？',
     answer: (
       <span>
-        按
-        <ShortcutRenderer shortcut={`${platformAlt}+Shift+T`} className="text-xs mx-1" />
-        或点提示区右上角的「清空对话」。开启「设置 → 出提示 →
+        点提示区右上角的「清空对话」。开启「设置 → 出提示 →
         保存对话记录到本地」后，清空前的对话会保存为 Markdown 文件，方便面试后复盘。
       </span>
     )

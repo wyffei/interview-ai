@@ -16,7 +16,9 @@ ipcMain.handle('updateAppState', (_event, next: Partial<AppState>) => {
   Object.assign(state, next)
   if (
     state.inSettingsPage !== before.inSettingsPage ||
-    state.inConversationPage !== before.inConversationPage
+    state.inConversationPage !== before.inConversationPage ||
+    // The toolbar shows the buttons of the mode on screen
+    state.inScreenshotPage !== before.inScreenshotPage
   ) {
     onPageChange?.()
   }
@@ -28,6 +30,8 @@ ipcMain.handle('getAppState', () => state)
 export const state = {
   /** The conversation page is on screen; the shortcuts that act on it check this */
   inConversationPage: false,
+  /** 截图模式's page is on screen */
+  inScreenshotPage: false,
   /**
    * Whether the settings page is on screen. Click-through is suspended there:
    * every control needed to turn it back off lives on that page, so applying it
@@ -38,3 +42,8 @@ export const state = {
 }
 
 export type AppState = typeof state
+
+/** One of the two mode pages is on screen, where the window shortcuts act */
+export function inModePage(): boolean {
+  return state.inConversationPage || state.inScreenshotPage
+}

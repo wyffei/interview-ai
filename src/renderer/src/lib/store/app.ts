@@ -5,6 +5,8 @@ interface AppState {
   ignoreMouse: boolean
   /** The conversation page is on screen */
   inConversationPage: boolean
+  /** 截图模式's page is on screen; the toolbar shows that mode's buttons */
+  inScreenshotPage: boolean
 }
 
 interface AppStore extends AppState {
@@ -19,7 +21,8 @@ interface AppStore extends AppState {
 
 const defaultState: AppState = {
   ignoreMouse: false,
-  inConversationPage: false
+  inConversationPage: false,
+  inScreenshotPage: false
 }
 
 export const useAppStore = create<AppStore>()((set) => ({
@@ -35,6 +38,10 @@ export const useAppStore = create<AppStore>()((set) => ({
     set((state) => ({ ignoreMouse: !state.ignoreMouse }))
   },
   syncAppState: (state) => {
-    set({ ignoreMouse: state.ignoreMouse, inConversationPage: state.inConversationPage })
+    set({
+      ignoreMouse: state.ignoreMouse,
+      inConversationPage: state.inConversationPage,
+      inScreenshotPage: state.inScreenshotPage
+    })
   }
 }))

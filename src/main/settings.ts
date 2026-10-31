@@ -1,6 +1,7 @@
 import { app, dialog, ipcMain } from 'electron'
 import type { ApiProfile } from '../shared/api-profile'
 import type { HintMode } from '../shared/conversation'
+import type { CaptureRegion } from '../shared/capture-region'
 import { setToolbarOpacity, syncToolbarSettings, updateToolbarStatus } from './toolbar-window'
 
 ipcMain.handle('getAppVersion', () => {
@@ -81,11 +82,27 @@ export const settings = {
    * user's "off".
    */
   disableThinking: false,
-  /** Every saved AI profile, synced from the renderer; hints go out with `conversationProfileId` */
+  /** The active profile's 「开启思考」 */
+  enableThinking: false,
+  /**
+   * Every saved AI profile, synced from the renderer; hints go out with
+   * `conversationProfileId`, screenshots with `screenshotProfileId`
+   */
   apiProfiles: [] as ApiProfile[],
   conversationProfileId: '',
-  /** The system prompt, from the renderer's active scene */
+  screenshotProfileId: '',
+  /** The hints' system prompt, from the renderer's active scene */
   conversationPrompt: '',
+  /** 截图模式's system prompt, from its own active scene */
+  screenshotPrompt: '',
+  /** 截图模式: crop every screenshot to this area of one screen; null for the whole screen */
+  captureRegion: null as CaptureRegion | null,
+  /**
+   * 截图模式: keep each question (read off the screenshots), its answer and a
+   * reason in a Markdown file, see save-screenshot.ts. Must stay falsy here (the
+   * renderer's default is on), see `disableThinking`
+   */
+  screenshotAutoSave: false,
   /** Hint on every finished sentence (`auto`) or only on the shortcut */
   conversationHintMode: 'auto' as HintMode,
   /** Silence (ms) that ends a sentence in the recogniser */
@@ -127,7 +144,16 @@ export type AppSettings = typeof settings
  * (or with only `.env` configured) the flat fields are all there is.
  */
 export function getHintProfile(): ApiProfile {
-  const profile = settings.apiProfiles.find((p) => p.id === settings.conversationProfileId)
+  return findProfile(settings.conversationProfileId)
+}
+
+/** The profile 截图模式 sends screenshots with; its model has to take images */
+export function getScreenshotProfile(): ApiProfile {
+  return findProfile(settings.screenshotProfileId)
+}
+
+function findProfile(id: string): ApiProfile {
+  const profile = settings.apiProfiles.find((p) => p.id === id)
   if (profile) return profile
   return {
     id: '',
@@ -136,6 +162,7 @@ export function getHintProfile(): ApiProfile {
     apiKey: settings.apiKey,
     apiHeaders: settings.apiHeaders,
     model: settings.model,
-    disableThinking: settings.disableThinking
+    disableThinking: settings.disableThinking,
+    enableThinking: settings.enableThinking
   }
 }

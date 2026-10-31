@@ -197,7 +197,8 @@ function resolveRoute(webSearch: boolean): Route {
         apiKey: settings.dashscopeApiKey,
         apiHeaders: '',
         model: DASHSCOPE_MODEL,
-        disableThinking: false
+        disableThinking: false,
+        enableThinking: false
       },
       model: DASHSCOPE_MODEL,
       search: true,

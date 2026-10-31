@@ -70,7 +70,7 @@ export function ConversationSection({
         <div className="space-y-4">
           <Field
             label="出提示方式"
-            note="自动：对方说完一句话就出提示，快捷键可随时干预；手动：只在按「出提示」快捷键时出。悬浮工具条和快捷键也能随时切换"
+            note="自动：对方说完一句话就出提示，也可随时点工具条上的「出提示」；手动：只在点「出提示」时出。工具条上也能随时切换"
           >
             <Select
               value={conversationHintMode}

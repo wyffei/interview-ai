@@ -33,8 +33,9 @@
   color: var(--app-surface-fg);
 }
 
-/* The conversation page: one surface under the columns and the status bar; each column scrolls on its own */
-.conversation-page {
+/* The mode pages: one surface under the columns and the input box; each column scrolls on its own */
+.conversation-page,
+.screenshot-page {
   background: var(--app-surface-bg);
   color: var(--app-surface-fg);
 }
@@ -153,6 +154,9 @@ body:has(.overlay-toolbar-root) {
 .overlay-toolbar-root {
   height: 100vh;
   overflow: hidden;
+  /* Both modes get the wider row's width (with room for 「截图中…」), so the
+     slack is spread between the buttons instead of piling up at the end */
+  justify-content: space-between;
 }
 
 /*

@@ -23,7 +23,8 @@ export interface ConversationRecord {
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-function getSaveDir(): string {
+/** Where the records go, the conversations' and 截图模式's alike; blank means Documents/InterviewCoder */
+export function getSaveDir(): string {
   return settings.conversationSaveDir || join(app.getPath('documents'), 'InterviewCoder')
 }
 

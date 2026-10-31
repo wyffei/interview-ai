@@ -15,15 +15,8 @@ import { isMac } from '@/lib/utils/env'
 import { Field, SettingsCard } from '../components'
 
 export function AppearanceSection() {
-  const {
-    theme,
-    opacity,
-    resizable,
-    showOverlayToolbar,
-    toolbarHoverDelay,
-    hideDockIcon,
-    updateSetting
-  } = useSettingsStore()
+  const { theme, opacity, resizable, toolbarHoverDelay, hideDockIcon, updateSetting } =
+    useSettingsStore()
   const { ignoreMouse } = useAppStore()
 
   return (
@@ -45,7 +38,10 @@ export function AppearanceSection() {
             </Select>
           </Field>
 
-          <Field label="窗口透明度" note="拖动可实时预览效果，也可在主界面用快捷键调节">
+          <Field
+            label="窗口透明度"
+            note="拖动可实时预览效果，也可用工具条上的「更清晰」「更透明」调节"
+          >
             <div className="w-60 shrink-0 flex items-center gap-2">
               <span className="text-xs whitespace-nowrap">透明</span>
               <Slider
@@ -72,7 +68,7 @@ export function AppearanceSection() {
 
           <Field
             label="鼠标穿透"
-            note="开启后鼠标点击会穿到窗口背后，可直接操作背后的编辑器；不需要悬浮工具条也能使用"
+            note="开启后鼠标点击会穿到窗口背后，可直接操作背后的编辑器；工具条不受影响，点「取消穿透」即可关闭"
           >
             <Switch
               className="scale-y-90"
@@ -84,38 +80,24 @@ export function AppearanceSection() {
           </Field>
 
           <Field
-            label="悬浮工具条"
-            note="在主窗口上方显示一排按钮，可用鼠标点击替代快捷键操作，详见帮助中心"
+            label="工具条悬停触发"
+            note="鼠标在主窗口上方工具条的按钮上停留指定时间即触发，无需点击；停留过程中按钮下方有进度条"
           >
-            <Switch
-              className="scale-y-90"
-              checked={showOverlayToolbar}
-              onCheckedChange={(checked) => updateSetting('showOverlayToolbar', checked)}
-            />
-          </Field>
-
-          {showOverlayToolbar && (
-            <Field
-              className="pl-4 border-l-2 border-gray-400/70"
-              label="悬停触发"
-              note="鼠标在按钮上停留指定时间即触发，无需点击；停留过程中按钮下方有进度条"
+            <Select
+              value={String(toolbarHoverDelay)}
+              onValueChange={(val) => updateSetting('toolbarHoverDelay', Number(val))}
             >
-              <Select
-                value={String(toolbarHoverDelay)}
-                onValueChange={(val) => updateSetting('toolbarHoverDelay', Number(val))}
-              >
-                <SelectTrigger className="w-60 shrink-0 bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">关闭（仅点击触发）</SelectItem>
-                  <SelectItem value="500">停留 0.5 秒</SelectItem>
-                  <SelectItem value="1000">停留 1 秒</SelectItem>
-                  <SelectItem value="2000">停留 2 秒</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
+              <SelectTrigger className="w-60 shrink-0 bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">关闭（仅点击触发）</SelectItem>
+                <SelectItem value="500">停留 0.5 秒</SelectItem>
+                <SelectItem value="1000">停留 1 秒</SelectItem>
+                <SelectItem value="2000">停留 2 秒</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
         </div>
       </SettingsCard>
 
@@ -126,10 +108,7 @@ export function AppearanceSection() {
             不经过任何第三方服务器。
           </p>
           {isMac && (
-            <Field
-              label="隐藏 Dock 图标"
-              note="开启后不在程序坞和 Cmd+Tab 切换器中显示，仅可通过快捷键唤起窗口"
-            >
+            <Field label="隐藏 Dock 图标" note="开启后不在程序坞和 Cmd+Tab 切换器中显示">
               <Switch
                 className="scale-y-90"
                 checked={hideDockIcon}

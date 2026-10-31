@@ -7,17 +7,18 @@ import HelpPage from '@/help'
 import BriefingPage from '@/briefing'
 import { OverlayToolbar } from '@/toolbar/OverlayToolbar'
 import { useSettingsStore } from '@/lib/store/settings'
-import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { useAppStore } from '@/lib/store/app'
 import { getCloneableFields } from '@/lib/utils'
 import { applyTheme } from '@/lib/theme'
 import { WindowResizeHandles } from '@/components/WindowResizeHandles'
-import { HOME_PATH } from '@/lib/use-main-page'
+import { MODE_PATHS } from '@/lib/use-main-page'
+import ScreenshotPage from '@/screenshot'
+import { followScreenshotAnswer } from '@/screenshot/events'
+import { followListening } from '@/conversation/listening'
 
 export default function App() {
   const [initialized, setInitialized] = useState(false)
   const settingsStore = useSettingsStore()
-  const { shortcuts } = useShortcutsStore()
   const theme = useSettingsStore((state) => state.theme)
 
   // Paint the window before syncing with main, so the first frame already uses
@@ -59,22 +60,15 @@ export default function App() {
     return () => window.api.removeUpdateStatusListener()
   }, [])
 
-  useEffect(() => {
-    console.log('App initShortcuts:', shortcuts) // DEBUG: 检查新键
-    window.api.initShortcuts(shortcuts)
-    window.api.getShortcuts().then((shortcutsStatus) => {
-      console.log('Shortcuts registered:', shortcutsStatus) // DEBUG: 主进程状态
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   return (
     <>
       <HashRouter>
         <ToolbarVisibilityController />
         <WindowResizeController />
+        <MainWindowEvents />
         <Routes>
           <Route index element={<ConversationPage />} />
+          <Route path="screenshot" element={<ScreenshotPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="help" element={<HelpPage />} />
           <Route path="briefing" element={<BriefingPage />} />
@@ -98,13 +92,41 @@ function WindowResizeController() {
 
 function ToolbarVisibilityController() {
   const location = useLocation()
-  const showOverlayToolbar = useSettingsStore((state) => state.showOverlayToolbar)
 
   useEffect(() => {
     // The toolbar window renders this app too, but must not drive its own visibility
     if (location.pathname === '/toolbar') return
-    void window.api.setToolbarVisible(location.pathname === HOME_PATH && showOverlayToolbar)
-  }, [location.pathname, showOverlayToolbar])
+    const onModePage = Object.values(MODE_PATHS).includes(location.pathname)
+    // Always there on a mode page: with no shortcuts, it is how the app is driven
+    void window.api.setToolbarVisible(onModePage)
+  }, [location.pathname])
+
+  return null
+}
+
+/**
+ * What the main window follows whatever page is up: 截图模式's answer (one
+ * still streaming when the user opens the settings must be complete on
+ * return), a capture region picked from the toolbar, and 对话模式's listening,
+ * whose toolbar button is on both mode pages.
+ */
+function MainWindowEvents() {
+  const isToolbar = useLocation().pathname === '/toolbar'
+
+  useEffect(() => {
+    if (isToolbar) return
+    const offEvents = followScreenshotAnswer()
+    const offRegion = window.api.onCaptureRegionPicked((region) =>
+      useSettingsStore.getState().updateSetting('captureRegion', region)
+    )
+    // The toolbar's listening button is on both mode pages
+    const offListening = followListening()
+    return () => {
+      offEvents()
+      offRegion()
+      offListening()
+    }
+  }, [isToolbar])
 
   return null
 }

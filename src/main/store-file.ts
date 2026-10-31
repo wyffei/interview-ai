@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 
 /**
- * The renderer's persisted stores (settings, shortcuts) as files under userData.
+ * The renderer's persisted store (settings) as a file under userData.
  *
  * localStorage alone belongs to the page's origin, so the dev server
  * (http://localhost:5173) and the installed app (file://) each kept a settings
@@ -14,7 +14,7 @@ import { join } from 'node:path'
  */
 
 /** Only the stores the renderer persists; nothing else may be read or written through here */
-const STORE_NAMES = new Set(['interview-coder-settings', 'interview-coder-shortcuts'])
+const STORE_NAMES = new Set(['interview-coder-settings'])
 
 function storePath(name: string): string {
   return join(app.getPath('userData'), 'stores', `${name}.json`)

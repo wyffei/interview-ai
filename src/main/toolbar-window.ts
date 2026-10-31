@@ -116,6 +116,10 @@ export function hideToolbar(): void {
  * reapply it without ever reading it back from the window.
  */
 export function noteToolbarResize(window: BrowserWindow, width: number, height: number): void {
+  if (window === ownerWindow) {
+    ownerUserSized = true
+    return
+  }
   if (window !== toolbarWindow) return
   toolbarSize = { width, height }
   userSized = true
@@ -123,25 +127,48 @@ export function noteToolbarResize(window: BrowserWindow, width: number, height: 
 
 /** Whether the user has dragged the toolbar's width this session; it then stays theirs */
 let userSized = false
+/** Same for the main window, which otherwise takes the toolbar's width */
+let ownerUserSized = false
+/** The width last given to the main window, so an unchanged report resizes nothing */
+let ownerFitWidth = 0
 
 /**
- * The renderer reports the width its buttons need (one more in 手机面试模式, a
+ * The main window as wide as the toolbar above it. Only the width is set, once
+ * per change: reading the size back and writing it again grows it a pixel at
+ * fractional display scaling (see `toolbarSize`).
+ */
+function fitOwnerWidth(): void {
+  if (ownerUserSized || !ownerWindow || ownerWindow.isDestroyed()) return
+  const workArea = screen.getDisplayMatching(ownerWindow.getBounds()).workArea
+  const width = Math.min(toolbarSize.width, workArea.width)
+  if (width === ownerFitWidth) return
+  ownerFitWidth = width
+  const [, height] = ownerWindow.getSize()
+  ownerWindow.setSize(width, height)
+}
+
+/**
+ * The renderer reports the width its buttons need: the wider mode's row, so
+ * both modes' toolbars are the same length (one more button in 手机面试模式, a
  * state's text growing). Until the user drags it, the toolbar follows that, so
- * no button is hidden for want of room; the work area still caps it.
+ * no button is hidden for want of room, and the main window takes the same
+ * width; the work area still caps it.
  */
 ipcMain.handle('toolbar:fit-width', (_event, width: number) => {
   if (userSized || !Number.isFinite(width) || width <= 0) return
   const next = Math.ceil(width)
-  if (next === toolbarSize.width) return
-  toolbarSize = { ...toolbarSize, width: next }
-  if (toolbarWindow && !toolbarWindow.isDestroyed() && toolbarWindow.isVisible()) {
-    syncToolbarBounds()
+  if (next !== toolbarSize.width) {
+    toolbarSize = { ...toolbarSize, width: next }
+    if (toolbarWindow && !toolbarWindow.isDestroyed() && toolbarWindow.isVisible()) {
+      syncToolbarBounds()
+    }
   }
+  fitOwnerWidth()
 })
 
 /**
  * The renderer owns whether the toolbar belongs on screen (main page + the
- * `showOverlayToolbar` setting); main only decides when it can actually show.
+ * toolbar is always on there); main only decides when it can actually show.
  */
 export function setToolbarWanted(wanted: boolean): void {
   isToolbarWanted = wanted
@@ -191,6 +218,13 @@ export interface ToolbarStatus {
   /** 手机面试模式, which brings the 我在说 / 对方在说 button */
   phoneMode: boolean
   speaker: Speaker
+  /** 截图模式: the screenshot button just clicked, while capturing and briefly once captured */
+  capture: ScreenshotCapture | null
+}
+
+export interface ScreenshotCapture {
+  action: 'takeScreenshot' | 'appendScreenshot' | 'snipScreenshot'
+  phase: 'capturing' | 'captured'
 }
 
 /** What the toolbar's buttons show; kept here since the toolbar's own stores never hear of it */
@@ -198,7 +232,8 @@ let toolbarStatus: ToolbarStatus = {
   listening: false,
   hintMode: 'auto',
   phoneMode: false,
-  speaker: 'other'
+  speaker: 'other',
+  capture: null
 }
 
 export function updateToolbarStatus(patch: Partial<ToolbarStatus>): void {

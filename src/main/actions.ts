@@ -1,4 +1,9 @@
-import { globalShortcut, ipcMain, screen } from 'electron'
+/**
+ * The window's handling (top-most, soft-hide while picking, click-through) and
+ * the actions the overlay toolbar triggers. There are no global shortcuts: the
+ * toolbar and the page are the controls.
+ */
+import { ipcMain, screen } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { applyContentProtection } from './main-window'
 import {
@@ -8,54 +13,15 @@ import {
   reassertToolbarTopMost,
   sendToToolbar
 } from './toolbar-window'
-import { state, setPageChangeHandler } from './state'
-import { requestHint, stopHints, requestClear, toggleSpeaker } from './conversation'
-
-type Shortcut = {
-  action: string
-  key: string
-  status: ShortcutStatus
-  registeredKeys: string[]
-}
-
-enum ShortcutStatus {
-  Registered = 'registered',
-  Failed = 'failed',
-  /** Shortcut is available to register but not registered. */
-  Available = 'available'
-}
-
-const MOVE_STEP = 200
-const shortcuts: Record<string, Shortcut> = {}
-
-/**
- * Windows repeats a held global shortcut at the keyboard's auto-repeat rate:
- * Chromium registers it without MOD_NOREPEAT, and the callback cannot tell a
- * repeat from a press. So a press within KEY_REPEAT_GAP of the previous one is
- * taken as a repeat and dropped, and it extends the gap: holding the keys, or a
- * key stuck down, fires the action once. The gap outlasts Windows' default
- * 500ms delay before the first repeat. Only actions that step something repeat.
- */
-const KEY_REPEAT_GAP = 600
-const REPEATABLE_ACTIONS = new Set([
-  'moveMainWindowUp',
-  'moveMainWindowDown',
-  'moveMainWindowLeft',
-  'moveMainWindowRight',
-  'pageUp',
-  'pageDown',
-  'increaseOpacity',
-  'decreaseOpacity'
-])
-const lastShortcutAt: Record<string, number> = {}
-
-function isKeyRepeat(action: string): boolean {
-  if (REPEATABLE_ACTIONS.has(action)) return false
-  const now = performance.now()
-  const last = lastShortcutAt[action]
-  lastShortcutAt[action] = now
-  return last !== undefined && now - last < KEY_REPEAT_GAP
-}
+import { state, setPageChangeHandler, inModePage } from './state'
+import { requestHint, stopHints, toggleSpeaker } from './conversation'
+import {
+  appendScreenshot,
+  newScreenshot,
+  pickRegion,
+  snipScreenshot,
+  stopAnswer
+} from './screenshot'
 
 const FRONT_REASSERT_DURATION = 8000
 const FRONT_REASSERT_INTERVAL = 100
@@ -167,6 +133,35 @@ function showMainWindow(window: BrowserWindow) {
   keepWindowInFront(window)
 }
 
+/** Bring the window back, whichever way it was hidden */
+function revealMainWindow(window: BrowserWindow) {
+  if (isWindowSoftHidden) restoreSoftHiddenWindow(window)
+  else if (!window.isVisible()) showMainWindow(window)
+}
+
+/**
+ * Keep the main window out of the way while the user drags on the region
+ * picker: it would cover part of the screen, and the top-most guard would keep
+ * lifting it back above the picker. A window that was already soft-hidden, by
+ * the user or by a pick in progress, is left for whoever hid it to bring back.
+ */
+async function whilePicking<T>(mainWindow: BrowserWindow, pick: () => Promise<T>): Promise<T> {
+  const wasHidden = isWindowSoftHidden
+  softHideWindow(mainWindow)
+  try {
+    return await pick()
+  } finally {
+    if (!wasHidden) restoreSoftHiddenWindow(mainWindow)
+  }
+}
+
+/** Ask the renderer to show the other mode's page; it owns the routes */
+function switchMode() {
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
+  mainWindow.webContents.send('switch-mode')
+}
+
 function keepWindowInFront(window: BrowserWindow) {
   if (!window || window.isDestroyed()) return
   if (frontReassertTimer) {
@@ -200,11 +195,11 @@ function keepWindowInFront(window: BrowserWindow) {
 
 /**
  * Opacity is owned by the renderer settings store (persisted + synced back to
- * main), so the shortcut only asks the renderer to step it.
+ * main), so the toolbar button only asks the renderer to step it.
  */
 function adjustOpacity(direction: 1 | -1) {
   const mainWindow = global.mainWindow
-  if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
+  if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
   // One level up or down; the renderer owns the levels
   mainWindow.webContents.send('adjust-opacity', direction)
 }
@@ -238,7 +233,7 @@ function broadcastAppState(): void {
 /**
  * Turn click-through on or off. Independent of the overlay toolbar: the
  * toolbar is one way to operate the window, not a requirement, so hiding it
- * leaves this working — the settings page and the shortcut can both drive it.
+ * leaves this working — the settings page drives it too.
  */
 export function setIgnoreMouse(ignore: boolean): void {
   state.ignoreMouse = ignore
@@ -256,64 +251,21 @@ setPageChangeHandler(() => {
   broadcastAppState()
 })
 
-const callbacks: Record<string, () => void> = {
-  hideOrShowMainWindow: async () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) return
-
-    if (process.platform === 'win32') {
-      if (isWindowSoftHidden) {
-        restoreSoftHiddenWindow(mainWindow)
-        return
-      }
-
-      if (!mainWindow.isVisible()) {
-        showMainWindow(mainWindow)
-        return
-      }
-
-      softHideWindow(mainWindow)
-      return
-    }
-
-    if (mainWindow.isVisible()) {
-      stopBackgroundGuard()
-      mainWindow.hide()
-    } else {
-      // 重新显示时不断重申置顶属性，抵消其他前台软件持续抢占
-      showMainWindow(mainWindow)
-    }
-  },
-
-  // Stop the hints being written
+/** What each toolbar button does */
+const actions: Record<string, () => void> = {
+  // Stop the hints being written, or 截图模式's answer
   stopSolutionStream: () => {
     if (state.inConversationPage) stopHints()
+    else if (state.inScreenshotPage) stopAnswer()
   },
 
   /**
-   * Ask the renderer to step hints through the saved AI profiles.
-   * The list lives in the renderer store (persisted there), so main only
-   * relays the direction.
-   */
-  nextApiProfile: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
-    mainWindow.webContents.send('switch-api-profile', 1)
-  },
-
-  previousApiProfile: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
-    mainWindow.webContents.send('switch-api-profile', -1)
-  },
-
-  /**
-   * The scenes live in the renderer store, so main only asks it to step; the
-   * new prompt comes back as `conversationPrompt` and is read at the next hint.
+   * The scenes live in the renderer store, so main only asks it to step the
+   * mode on screen; the new prompt comes back and is read at the next request.
    */
   cycleScene: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
+    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
     mainWindow.webContents.send('cycle-scene')
   },
 
@@ -331,53 +283,21 @@ const callbacks: Record<string, () => void> = {
 
   pageUp: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
+    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
     mainWindow.webContents.send('scroll-page-up')
   },
 
   pageDown: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
+    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
     mainWindow.webContents.send('scroll-page-down')
   },
 
-  moveMainWindowUp: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const [x, y] = mainWindow.getPosition()
-    mainWindow.setPosition(x, y - MOVE_STEP)
-  },
-
-  moveMainWindowDown: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const [x, y] = mainWindow.getPosition()
-    mainWindow.setPosition(x, y + MOVE_STEP)
-  },
-
-  moveMainWindowLeft: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const [x, y] = mainWindow.getPosition()
-    mainWindow.setPosition(x - MOVE_STEP, y)
-  },
-
-  moveMainWindowRight: () => {
-    const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const [x, y] = mainWindow.getPosition()
-    mainWindow.setPosition(x + MOVE_STEP, y)
-  },
-
+  // 对话模式's listening, from either mode page: it goes on while 截图模式 is up
   toggleTranscription: () => {
     const mainWindow = global.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed() || !state.inConversationPage) return
+    if (!mainWindow || mainWindow.isDestroyed() || !inModePage()) return
     mainWindow.webContents.send('toggle-transcription')
-  },
-
-  // Starts the conversation over
-  clearTranscription: () => {
-    if (state.inConversationPage) requestClear()
   },
 
   // A hint now, whatever automatic hinting is waiting for
@@ -395,110 +315,28 @@ const callbacks: Record<string, () => void> = {
   // 手机面试模式: 我在说 ⇄ 对方在说. Not page-bound: listening goes on everywhere
   toggleSpeaker: () => {
     toggleSpeaker()
+  },
+
+  // 截图模式 ⇄ 对话模式
+  switchMode,
+
+  takeScreenshot: () => {
+    void newScreenshot()
+  },
+
+  appendScreenshot: () => {
+    void appendScreenshot()
+  },
+
+  snipScreenshot: () => {
+    void snipScreenshot(whilePicking, revealMainWindow)
   }
 }
 
-const clickableActions = new Set([
-  'stopSolutionStream',
-  'ignoreOrEnableMouse',
-  'increaseOpacity',
-  'decreaseOpacity',
-  'pageUp',
-  'pageDown',
-  'moveMainWindowUp',
-  'moveMainWindowDown',
-  'moveMainWindowLeft',
-  'moveMainWindowRight',
-  'toggleTranscription',
-  'clearTranscription',
-  'cycleScene',
-  'generateHint',
-  'toggleHintMode',
-  'toggleSpeaker'
-])
-
-function unregisterShortcut(action: string) {
-  const shortcut = shortcuts[action]
-  if (!shortcut) return
-  if (shortcut.registeredKeys.length) {
-    shortcut.registeredKeys.forEach((registeredKey) => {
-      globalShortcut.unregister(registeredKey)
-    })
-  } else {
-    globalShortcut.unregister(shortcut.key)
-  }
-  shortcut.status = ShortcutStatus.Available
-  shortcut.registeredKeys = []
-}
-
-function getShortcutRegistrationKeys(key: string) {
-  const keys = [key]
-  if (process.platform !== 'win32') {
-    return keys
-  }
-  const parts = key.split('+')
-  const hasAlt = parts.includes('Alt')
-  const hasCtrl = parts.includes('CommandOrControl') || parts.includes('Control')
-  if (hasAlt && !hasCtrl) {
-    const aliasParts = [...parts]
-    const altIndex = aliasParts.indexOf('Alt')
-    if (altIndex >= 0) {
-      aliasParts.splice(altIndex, 0, 'CommandOrControl')
-      const aliasKey = aliasParts.join('+')
-      if (!keys.includes(aliasKey)) {
-        keys.push(aliasKey)
-      }
-    }
-  }
-  return keys
-}
-
-function registerShortcut(action: string, key: string) {
-  if (shortcuts[action]) {
-    unregisterShortcut(action)
-  }
-
-  const keysToRegister = getShortcutRegistrationKeys(key)
-  const registeredKeys: string[] = []
-  const onPress = () => {
-    if (!isKeyRepeat(action)) callbacks[action]?.()
-  }
-  keysToRegister.forEach((shortcutKey) => {
-    if (globalShortcut.register(shortcutKey, onPress)) {
-      registeredKeys.push(shortcutKey)
-    }
-  })
-
-  shortcuts[action] = {
-    action,
-    key,
-    status: registeredKeys.length ? ShortcutStatus.Registered : ShortcutStatus.Failed,
-    registeredKeys
-  }
-}
-
-ipcMain.handle('getShortcuts', () => shortcuts)
-
-ipcMain.handle(
-  'initShortcuts',
-  (_event, shortcuts: Record<string, { action: string; key: string }>) => {
-    Object.entries(shortcuts).forEach(([action, { key }]) => {
-      registerShortcut(action, key)
-    })
-  }
-)
-
-ipcMain.handle('updateShortcuts', (_event, _shortcuts: { action: string; key: string }[]) => {
-  _shortcuts.forEach((shortcut) => {
-    if (shortcuts[shortcut.action]?.key !== shortcut.key) {
-      registerShortcut(shortcut.action, shortcut.key)
-    }
-  })
-})
-
+// Only the toolbar's buttons: anything else the renderer asks for is refused
 ipcMain.handle('triggerAction', (_event, action: string) => {
-  if (!clickableActions.has(action)) return false
-  callbacks[action]?.()
+  if (!Object.hasOwn(actions, action)) return false
+  actions[action]()
   return true
 })
 
@@ -514,3 +352,6 @@ ipcMain.handle('setIgnoreMouse', (_event, ignore: boolean) => {
   setIgnoreMouse(ignore)
   return state.ignoreMouse
 })
+
+// 截图模式's settings: drag out the capture region
+ipcMain.handle('pickCaptureRegion', () => pickRegion(whilePicking))

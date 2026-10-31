@@ -3,9 +3,10 @@ import { Link, useSearchParams } from 'react-router'
 import {
   ArrowLeft,
   Bot,
-  Keyboard,
+  Camera,
   LibraryBig,
   Lightbulb,
+  MessagesSquare,
   Mic,
   Palette,
   type LucideIcon
@@ -14,27 +15,41 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useAppStore } from '@/lib/store/app'
-import { HOME_PATH } from '@/lib/use-main-page'
+import { useHomePath } from '@/lib/use-main-page'
 import { AiModelsSection } from './sections/AiModelsSection'
 import { VoiceSection } from './sections/VoiceSection'
 import { AppearanceSection } from './sections/AppearanceSection'
-import { ShortcutsSection } from './sections/ShortcutsSection'
 import { ConversationSection } from './sections/ConversationSection'
 import { KnowledgeSection } from './sections/KnowledgeSection'
+import { ScreenshotSection } from './sections/ScreenshotSection'
 
-type Tab = 'hints' | 'ai' | 'knowledge' | 'voice' | 'appearance' | 'shortcuts'
+type Tab = 'hints' | 'screenshot' | 'ai' | 'knowledge' | 'voice' | 'appearance'
 
-/** One group per page of settings; the main page's settings button opens `?tab=hints` */
-const NAV: { tab: Tab; label: string; Icon: LucideIcon }[] = [
-  { tab: 'hints', label: '出提示', Icon: Lightbulb },
+type NavItem = { tab: Tab; label: string; Icon: LucideIcon }
+
+/**
+ * One group per page of settings, in nav order. 对话模式 is a row like 截图模式,
+ * opening its first page, with its three pages under it. Each mode page's
+ * settings button opens its own tab
+ */
+const NAV: (NavItem | { heading: string; Icon: LucideIcon; items: NavItem[] })[] = [
   { tab: 'ai', label: 'AI 模型', Icon: Bot },
-  { tab: 'knowledge', label: '资料库', Icon: LibraryBig },
-  { tab: 'voice', label: '语音', Icon: Mic },
-  { tab: 'appearance', label: '界面与隐私', Icon: Palette },
-  { tab: 'shortcuts', label: '快捷键', Icon: Keyboard }
+  { tab: 'screenshot', label: '截图模式', Icon: Camera },
+  {
+    heading: '对话模式',
+    Icon: MessagesSquare,
+    items: [
+      { tab: 'hints', label: '出提示', Icon: Lightbulb },
+      { tab: 'knowledge', label: '资料库', Icon: LibraryBig },
+      { tab: 'voice', label: '语音', Icon: Mic }
+    ]
+  },
+  { tab: 'appearance', label: '界面与隐私', Icon: Palette }
 ]
 
-const TABS = NAV.map((item) => item.tab)
+const TABS = NAV.flatMap((entry) => ('heading' in entry ? entry.items : [entry])).map(
+  (item) => item.tab
+)
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -43,6 +58,7 @@ export default function SettingsPage() {
   const setActiveProfile = useSettingsStore((state) => state.setActiveProfile)
   const syncAppState = useAppStore((state) => state.syncAppState)
   const contentRef = useRef<HTMLDivElement>(null)
+  const homePath = useHomePath()
 
   const openTab = (next: Tab) => setSearchParams({ tab: next }, { replace: true })
   // From the profile picker: open that profile in the AI 模型 group
@@ -86,14 +102,14 @@ export default function SettingsPage() {
     knowledge: <KnowledgeSection />,
     voice: <VoiceSection />,
     appearance: <AppearanceSection />,
-    shortcuts: <ShortcutsSection />,
     hints: (
       <ConversationSection
         onEditProfile={editProfile}
         onOpenVoice={() => openTab('voice')}
         onOpenKnowledge={() => openTab('knowledge')}
       />
-    )
+    ),
+    screenshot: <ScreenshotSection onEditProfile={editProfile} />
   }
 
   return (
@@ -102,7 +118,7 @@ export default function SettingsPage() {
       <div id="app-header" className="flex items-center">
         <div className="actions">
           <Button variant="ghost" asChild size="icon" className="w-12 mr-2 rounded-none">
-            <Link to={HOME_PATH}>
+            <Link to={homePath}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -113,25 +129,61 @@ export default function SettingsPage() {
       {/* The page itself never scrolls: the nav stays put, the content scrolls */}
       <div id="app-content" className="flex" style={{ overflow: 'hidden' }}>
         <nav className="flex w-36 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-black/10 p-2 max-[640px]:w-12">
-          {NAV.map(({ tab: itemTab, label, Icon }) => (
-            <button
-              key={itemTab}
-              aria-label={label}
-              className={cn(
-                'flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors cursor-pointer select-none max-[640px]:justify-center max-[640px]:px-0',
-                itemTab === tab ? 'bg-gray-300/80 font-medium' : 'hover:bg-gray-300/40'
-              )}
-              onClick={() => openTab(itemTab)}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="truncate max-[640px]:hidden">{label}</span>
-            </button>
-          ))}
+          {NAV.map((entry) =>
+            'heading' in entry ? (
+              <div key={entry.heading} className="flex flex-col gap-0.5">
+                <NavButton
+                  item={{ tab: entry.items[0].tab, label: entry.heading, Icon: entry.Icon }}
+                  active={false}
+                  onOpen={openTab}
+                />
+                {entry.items.map((item) => (
+                  <NavButton
+                    key={item.tab}
+                    item={item}
+                    indent
+                    active={item.tab === tab}
+                    onOpen={openTab}
+                  />
+                ))}
+              </div>
+            ) : (
+              <NavButton key={entry.tab} item={entry} active={entry.tab === tab} onOpen={openTab} />
+            )
+          )}
         </nav>
         <div ref={contentRef} className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
           {sections[tab]}
         </div>
       </div>
     </>
+  )
+}
+
+function NavButton({
+  item: { tab, label, Icon },
+  indent = false,
+  active,
+  onOpen
+}: {
+  item: NavItem
+  /** Under a group heading */
+  indent?: boolean
+  active: boolean
+  onOpen: (tab: Tab) => void
+}) {
+  return (
+    <button
+      aria-label={label}
+      className={cn(
+        'flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors cursor-pointer select-none max-[640px]:justify-center max-[640px]:px-0',
+        indent && 'pl-8',
+        active ? 'bg-gray-300/80 font-medium' : 'hover:bg-gray-300/40'
+      )}
+      onClick={() => onOpen(tab)}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="truncate max-[640px]:hidden">{label}</span>
+    </button>
   )
 }

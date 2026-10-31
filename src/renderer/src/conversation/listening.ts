@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
+import { useAppStore } from '@/lib/store/app'
 import { describeCaptureError, startAudioCapture, stopAudioCapture } from '@/lib/audio-capture'
 
 /**
@@ -12,9 +13,8 @@ import { describeCaptureError, startAudioCapture, stopAudioCapture } from '@/lib
  */
 export async function startListening(): Promise<void> {
   const { dashscopeApiKey, conversationSilenceMs } = useSettingsStore.getState()
-  const { setErrorMessage } = useConversationStore.getState()
   if (!dashscopeApiKey) {
-    setErrorMessage('请先在「设置 → 语音」填写百炼平台 API Key，才能识别对方说话')
+    reportListeningError('请先在「设置 → 语音」填写百炼平台 API Key，才能识别对方说话')
     return
   }
   try {
@@ -23,11 +23,47 @@ export async function startListening(): Promise<void> {
       maxSentenceSilence: conversationSilenceMs
     })
     useTranscriptionStore.getState().setIsTranscribing(true)
-    setErrorMessage(null)
+    useConversationStore.getState().setErrorMessage(null)
   } catch (err) {
     console.error('Failed to start listening:', err)
     stopAudioCapture()
-    setErrorMessage(describeCaptureError(err))
+    reportListeningError(describeCaptureError(err))
+  }
+}
+
+/**
+ * Put a listening failure on the conversation page, and, when another page is
+ * on screen (截图模式, the settings), in a toast too: the conversation page
+ * is where it would otherwise only be found later
+ */
+function reportListeningError(message: string): void {
+  useConversationStore.getState().setErrorMessage(message)
+  if (!useAppStore.getState().inConversationPage) {
+    toast.error('对话模式的监听出错', { description: message, duration: 8000 })
+  }
+}
+
+/**
+ * Follow listening for the main window's whole life, so the toolbar's
+ * listening button works on 截图模式's page too, and recognition ending there
+ * is noticed at once; returns the unsubscribe
+ */
+export function followListening(): () => void {
+  const transcription = useTranscriptionStore.getState()
+  window.api.onToggleTranscription(toggleListening)
+  window.api.onTranscriptionError((message) => {
+    stopAudioCapture()
+    transcription.setIsTranscribing(false)
+    reportListeningError(message)
+  })
+  window.api.onTranscriptionStopped(() => {
+    stopAudioCapture()
+    transcription.setIsTranscribing(false)
+  })
+  return () => {
+    window.api.removeToggleTranscriptionListener()
+    window.api.removeTranscriptionErrorListener()
+    window.api.removeTranscriptionStoppedListener()
   }
 }
 
@@ -48,7 +84,9 @@ export function toggleHintMode(): void {
   updateSetting('conversationHintMode', next)
   toast(next === 'auto' ? '已切换为自动出提示' : '已切换为手动出提示', {
     description:
-      next === 'auto' ? '对方说完一句话就出提示，快捷键可随时干预' : '只在按快捷键时出提示',
+      next === 'auto'
+        ? '对方说完一句话就出提示，也可随时点「出提示」'
+        : '只在点工具条上的「出提示」时出提示',
     duration: 3000
   })
 }

@@ -1,7 +1,13 @@
 import { findProvider } from './providers'
-import type { ApiProfile } from '../../../shared/api-profile'
+import { thinkingModeOf, type ApiProfile } from '../../../shared/api-profile'
 
 export type { ApiProfile }
+
+/** The profile's thinking switch as a tag, e.g. for the profile picker; blank for the default */
+export function thinkingTag(profile: ApiProfile): string {
+  const mode = thinkingModeOf(profile)
+  return mode === 'off' ? '关闭思考' : mode === 'on' ? '开启思考' : ''
+}
 
 let profileSeq = 0
 
@@ -21,6 +27,7 @@ export function createProfile(partial?: Partial<ApiProfile>): ApiProfile {
     apiKey: partial?.apiKey ?? '',
     apiHeaders: partial?.apiHeaders ?? '',
     model,
-    disableThinking: partial?.disableThinking ?? false
+    disableThinking: partial?.disableThinking ?? false,
+    enableThinking: partial?.enableThinking ?? false
   }
 }

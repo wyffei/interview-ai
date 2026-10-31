@@ -1,7 +1,7 @@
 import 'dotenv/config'
 // First: settles which folder userData is before anything reads it
 import './legacy-name'
-import { app, BrowserWindow, desktopCapturer, globalShortcut, session } from 'electron'
+import { app, BrowserWindow, desktopCapturer, session } from 'electron'
 
 type AbortLikeError = {
   name?: string
@@ -29,9 +29,10 @@ process.on('uncaughtException', (error) => {
   console.error(error)
 })
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import './shortcuts'
+import './actions'
 import './transcription'
 import './conversation'
+import './screenshot'
 import './knowledge'
 import './briefing'
 import './window-resize'
@@ -116,8 +117,6 @@ app.whenReady().then(() => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
-  // Unregister all shortcuts when there is no window left
-  globalShortcut.unregisterAll()
   if (process.platform !== 'darwin') {
     app.quit()
   }

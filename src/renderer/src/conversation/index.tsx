@@ -4,13 +4,13 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
 import { stopAudioCapture } from '@/lib/audio-capture'
-import { useMainPage } from '@/lib/use-main-page'
+import { useModePage } from '@/lib/use-main-page'
 import { AppHeader } from '@/components/AppHeader'
 import { PrerequisitesChecker } from './PrerequisitesChecker'
 import { ClearConfirmDialog } from './ClearConfirmDialog'
 import { TranscriptPanel } from './TranscriptPanel'
 import { HintPanel } from './HintPanel'
-import { toggleHintMode, toggleListening } from './listening'
+import { toggleHintMode } from './listening'
 
 /**
  * The main page: what the other side says on the left, the hints for it on the right.
@@ -20,7 +20,7 @@ import { toggleHintMode, toggleListening } from './listening'
 export default function ConversationPage() {
   const transcriptHidden = useSettingsStore((state) => state.conversationTranscriptHidden)
 
-  useMainPage()
+  useModePage('conversation')
   useConversationEvents()
 
   return (
@@ -99,25 +99,6 @@ function useConversationEvents() {
       frameHandle.current = null
       pendingChunks.current.clear()
       window.api.removeConversationListeners()
-    }
-  }, [])
-
-  useEffect(() => {
-    const transcription = useTranscriptionStore.getState()
-    window.api.onToggleTranscription(toggleListening)
-    window.api.onTranscriptionError((message) => {
-      useConversationStore.getState().setErrorMessage(message)
-      stopAudioCapture()
-      transcription.setIsTranscribing(false)
-    })
-    window.api.onTranscriptionStopped(() => {
-      stopAudioCapture()
-      transcription.setIsTranscribing(false)
-    })
-    return () => {
-      window.api.removeToggleTranscriptionListener()
-      window.api.removeTranscriptionErrorListener()
-      window.api.removeTranscriptionStoppedListener()
     }
   }, [])
 }

@@ -20,4 +20,14 @@ export interface ApiProfile {
    * platform and model — and so a fast profile and a careful one can sit side by side.
    */
   disableThinking: boolean
+  /**
+   * Ask a hybrid model to think, which it skips by default (百炼 qwen3-vl-plus).
+   * Never set together with `disableThinking`; neither means the platform's default.
+   */
+  enableThinking: boolean
+}
+
+/** A profile's thinking switch in one value: neither field set is the platform's default */
+export function thinkingModeOf(profile: Pick<ApiProfile, 'disableThinking' | 'enableThinking'>) {
+  return profile.disableThinking ? 'off' : profile.enableThinking ? 'on' : 'default'
 }

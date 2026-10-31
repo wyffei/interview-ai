@@ -82,7 +82,9 @@ app's stdout/stderr in `$TMPDIR/run-interview-coder-cn/app.log`. Open the screen
 | `ping`                                              | `pong` once the driver is listening                                              |
 | `launch[?a=<.env block>]`                           | start the app on a fresh userData dir                                            |
 | `ss?a=<name>`                                       | screenshot of the main window -> `<name>.png`                                    |
-| `action?a=<name>`                                   | run a shortcut action: `generateHint`, `toggleHintMode`, `stopSolutionStream`, … |
+| `ss-toolbar?a=<name>`                               | screenshot of the overlay toolbar, plus its button texts                         |
+| `ss-toolbar?a=<name>`                               | screenshot of the overlay toolbar, plus its button texts                         |
+| `action?a=<name>`                                   | run a toolbar action: `generateHint`, `toggleHintMode`, `takeScreenshot`, …     |
 | `goto?a=<hash>`                                     | navigate: `#/`, `#/settings?tab=voice`, …                                        |
 | `dashscope`                                         | type `DASHSCOPE_API_KEY` (env, else `.env`) into 设置 → 语音, go back            |
 | `say?a=<text>`                                      | speak through the speakers (`SAY_VOICE`, default Tingting)                       |
@@ -118,8 +120,8 @@ All exit 0 on a clean tree.
   and the real `~/Library/Application Support/interview-ai` is never read or written.
 - **The app reads `.env` itself** (dotenv, cwd = repo root). `MODEL="gpt-5-mini"` there applies
   unless the driver gets `MODEL=`; dotenv never overrides variables already set.
-- **Global shortcuts can't be pressed from Playwright.** `action` calls
-  `window.api.triggerAction`, which only accepts `clickableActions` in `src/main/shortcuts.ts`;
+- **The app has no shortcuts; the toolbar is how it is driven.** `action` calls
+  `window.api.triggerAction`, which only accepts the toolbar's actions in `src/main/actions.ts`;
   anything else comes back `refused`.
 - **Content protection does not block `ss`**: Playwright renders through CDP, not OS capture.
 - **Two windows**: the main one and the overlay toolbar (`index.html#toolbar`); the driver picks
@@ -137,6 +139,12 @@ All exit 0 on a clean tree.
 
 ## Troubleshooting
 
+- **`Process failed to launch!` on Windows from a VS Code terminal**: the shell inherits
+  `ELECTRON_RUN_AS_NODE=1`, which starts Electron as plain Node. The driver drops it for the app;
+  the command sandbox may also have to be off for the launch.
+
+- **`Process failed to launch!` on Windows from a VS Code terminal**: the shell inherits `ELECTRON_RUN_AS_NODE=1`. The driver drops it for the app; the command sandbox may also have to be off for the launch.
+
 - **`Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright-core'`**: an `npm install`
   pruned it. `npm i --no-save playwright-core`.
 - **`zsh: no matches found: localhost:47123/ss?a=…`**: zsh globbed the `?`. Quote the URL.
@@ -144,3 +152,7 @@ All exit 0 on a clean tree.
   driver with `MODEL=<id>`.
 - **`sandbox_extension_issue_file failed … Operation not permitted` in `app.log`**: harmless noise
   from the unpacked Electron.app.
+- **`Attempted to register a second handler for '…'` on launch (Windows)**: `out/` was built from
+  a lowercase drive path (`f:\github\…`), and Rollup bundled a module twice under both spellings of
+  the drive letter. Rebuild from `F:\github\interview-ai` (PowerShell `Set-Location`), then check
+  `out/main/index.js` holds each `ipcMain.handle` channel once.

@@ -9,15 +9,14 @@ import {
   Globe,
   LoaderCircle,
   PanelLeftOpen,
+  SendHorizontal,
   Telescope,
   X
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import MarkdownRenderer from '@/components/MarkdownRenderer'
-import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { useSettingsStore } from '@/lib/store/settings'
-import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useConversationStore } from '@/lib/store/conversation'
 import { useBriefing } from '@/lib/briefing'
@@ -163,40 +162,68 @@ export function HintPanel() {
 /**
  * Keywords for the hints, such as a company name the recogniser keeps getting
  * wrong. Every request from now on carries them; Enter also asks for a hint
- * at once, the way the shortcut does. A bare number answers the latest hint's
+ * at once, the way the toolbar button does. A bare number answers the latest hint's
  * 「（可确认：……）」 instead (see main `submitNote`).
  */
 function NoteInput() {
   const note = useConversationStore((state) => state.note)
   const setNote = useConversationStore((state) => state.setNote)
+  const [sent, setSent] = useState(false)
+
+  // A short 「已发送」, so an Enter that worked never looks like one that did not
+  useEffect(() => {
+    if (!sent) return
+    const timer = setTimeout(() => setSent(false), 1500)
+    return () => clearTimeout(timer)
+  }, [sent])
+
+  const submit = () => {
+    setSent(true)
+    void window.api.submitConversationNote().then((answered) => {
+      if (answered) useConversationStore.setState({ note: '' })
+    })
+  }
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5 border-t border-app-border px-3 py-1.5">
-      <input
-        className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-app-muted-fg"
+    <div className="flex shrink-0 items-start gap-2 border-t border-app-border px-3 py-2">
+      <textarea
+        rows={2}
+        className="min-w-0 flex-1 resize-none bg-transparent text-sm leading-5 outline-none placeholder:text-app-muted-fg"
         value={note}
         placeholder="补充说明，如「字节」「问的是 SLAM 项目」，回车立即出提示"
         maxLength={200}
-        onChange={(event) => setNote(event.target.value)}
+        onChange={(event) => setNote(event.target.value.replace(/\n/g, ' '))}
         onKeyDown={(event) => {
+          // During input-method composition Enter only puts the letters down
           if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-            void window.api.submitConversationNote().then((answered) => {
-              if (answered) useConversationStore.setState({ note: '' })
-            })
+            event.preventDefault()
+            submit()
           } else if (event.key === 'Escape') {
             event.currentTarget.blur()
           }
         }}
       />
-      {note && (
-        <button
-          className="shrink-0 text-app-muted-fg hover:text-current cursor-pointer"
-          aria-label="清除关键词"
-          onClick={() => setNote('')}
-        >
-          <X className="size-3.5" />
-        </button>
-      )}
+      <div className="flex shrink-0 items-center gap-2 pt-0.5 text-app-muted-fg">
+        {sent && <span className="text-xs text-green-500 select-none">已发送</span>}
+        {note && (
+          <>
+            <button
+              className="hover:text-current cursor-pointer"
+              aria-label="清除补充说明"
+              onClick={() => setNote('')}
+            >
+              <X className="size-4" />
+            </button>
+            <button
+              className="hover:text-current cursor-pointer"
+              aria-label="出提示"
+              onClick={submit}
+            >
+              <SendHorizontal className="size-4" />
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -253,7 +280,7 @@ function BriefingStrip() {
   )
 }
 
-/** How far the panel scrolls for one page, by the shortcut or after a long hint */
+/** How far the panel scrolls for one page, by the toolbar or after a long hint */
 function pageStep(panel: HTMLElement): number {
   return Math.max(panel.clientHeight - PAGE_OVERLAP, panel.clientHeight / 2)
 }
@@ -380,17 +407,10 @@ function ReviewBadge({ review }: { review: HintReview }) {
 
 function EmptyState() {
   const navigate = useNavigate()
-  const { shortcuts } = useShortcutsStore()
   const dashscopeApiKey = useSettingsStore((state) => state.dashscopeApiKey)
   const hintMode = useSettingsStore((state) => state.conversationHintMode)
   const isTranscribing = useTranscriptionStore((state) => state.isTranscribing)
   const hasUtterances = useConversationStore((state) => state.utterances.length > 0)
-  const key = (action: string) => (
-    <ShortcutRenderer
-      shortcut={shortcuts[action].key}
-      className="mx-1 inline-block border border-current bg-transparent px-1 py-0 text-xs"
-    />
-  )
 
   let content: ReactNode
   if (!dashscopeApiKey) {
@@ -405,16 +425,16 @@ function EmptyState() {
   } else if (!isTranscribing && !hasUtterances) {
     content = (
       <>
-        <p>按{key('toggleTranscription')}开始监听对方说话</p>
+        <p>点下方按钮或工具条上的「开始监听」，开始听对方说话</p>
         <Button size="sm" variant="secondary" onClick={() => void startListening()}>
           开始监听
         </Button>
       </>
     )
   } else if (hintMode === 'auto') {
-    content = <p>对方说完一句话，这里就会出提示；也可以按{key('generateHint')}立即出</p>
+    content = <p>对方说完一句话，这里就会出提示；也可以点工具条上的「出提示」立即出</p>
   } else {
-    content = <p>手动模式：按{key('generateHint')}出提示</p>
+    content = <p>手动模式：点工具条上的「出提示」出提示</p>
   }
 
   return (

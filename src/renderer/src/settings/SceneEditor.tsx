@@ -12,19 +12,32 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { useSettingsStore, hasRemovedPresets, PRESET_SCENE_PROMPTS } from '@/lib/store/settings'
+import {
+  useSettingsStore,
+  hasRemovedPresets,
+  scenesOf,
+  PRESET_SCENE_PROMPTS,
+  type AppMode
+} from '@/lib/store/settings'
 
-const PLACEHOLDERS = {
-  name: '场景名称，如：产品经理面试',
-  prompt:
-    '请输入该场景的系统提示词, 示例: 你是求职者的实时提词助手, 根据面试官刚说的话给出简短的回答要点。'
+const PLACEHOLDERS: Record<AppMode, { name: string; prompt: string }> = {
+  conversation: {
+    name: '场景名称，如：产品经理面试',
+    prompt:
+      '请输入该场景的系统提示词, 示例: 你是求职者的实时提词助手, 根据面试官刚说的话给出简短的回答要点。'
+  },
+  screenshot: {
+    name: '场景名称，如：数学题',
+    prompt: '请输入该场景的系统提示词, 示例: 根据截图中的题目，先给出答案，再给出简要的解题步骤。'
+  }
 }
 
-/** The prompt scenes: pick, edit, add and delete; the shortcut cycles through them */
-export function SceneEditor() {
+/** A mode's prompt scenes: pick, edit, add and delete; the shortcut cycles through them */
+export function SceneEditor({ mode = 'conversation' }: { mode?: AppMode }) {
   const {
-    scenes,
+    scenes: allScenes,
     conversationSceneId,
+    screenshotSceneId,
     removedPresetSceneIds,
     setActiveScene,
     updateScenePrompt,
@@ -36,15 +49,16 @@ export function SceneEditor() {
   const [newSceneName, setNewSceneName] = useState('')
   const [sceneToDelete, setSceneToDelete] = useState<string | null>(null)
 
-  const activeId = conversationSceneId
+  const scenes = scenesOf(allScenes, mode)
+  const activeId = mode === 'screenshot' ? screenshotSceneId : conversationSceneId
   const activeScene = scenes.find((s) => s.id === activeId)
   const deletingScene = scenes.find((s) => s.id === sceneToDelete)
-  const canRestore = hasRemovedPresets(removedPresetSceneIds)
+  const canRestore = hasRemovedPresets(removedPresetSceneIds, mode)
 
   const handleAddScene = () => {
     const name = newSceneName.trim()
     if (!name) return
-    addScene(name)
+    addScene(name, mode)
     setNewSceneName('')
     setAddSceneOpen(false)
   }
@@ -55,7 +69,7 @@ export function SceneEditor() {
         <label className="text-sm font-medium">
           提示词场景
           <span className="ml-2 text-xs font-light">
-            选择场景后可编辑对应的系统提示词，修改会自动保存；可新增场景，用不到的也可以删掉，快捷键切换时只在剩下的场景间循环
+            选择场景后可编辑对应的系统提示词，修改会自动保存；可新增场景，用不到的也可以删掉，工具条上的「切换场景」只在剩下的场景间循环
           </span>
         </label>
         <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -98,7 +112,7 @@ export function SceneEditor() {
           {canRestore && (
             <button
               className="flex items-center gap-1 rounded-full border border-dashed border-gray-400 bg-transparent px-3 py-1 text-sm text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
-              onClick={() => restorePresetScenes()}
+              onClick={() => restorePresetScenes(mode)}
             >
               <RotateCcw className="h-3.5 w-3.5" />
               恢复预设场景
@@ -130,7 +144,7 @@ export function SceneEditor() {
           <Textarea
             value={activeScene.prompt}
             onChange={(e) => updateScenePrompt(activeScene.id, e.target.value)}
-            placeholder={PLACEHOLDERS.prompt}
+            placeholder={PLACEHOLDERS[mode].prompt}
             className="w-full min-h-24 max-h-100 bg-white"
             rows={6}
           />
@@ -146,7 +160,7 @@ export function SceneEditor() {
           <Input
             value={newSceneName}
             onChange={(e) => setNewSceneName(e.target.value)}
-            placeholder={PLACEHOLDERS.name}
+            placeholder={PLACEHOLDERS[mode].name}
             maxLength={20}
             autoFocus
             onKeyDown={(e) => {

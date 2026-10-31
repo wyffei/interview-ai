@@ -119,11 +119,15 @@ const COMMANDS = {
     if (app) return 'already launched'
     const warning = buildWarning()
     userData = fs.mkdtempSync(path.join(RUN_DIR, 'userdata-'))
+    // A shell inside VS Code inherits ELECTRON_RUN_AS_NODE=1, which starts
+    // Electron as plain Node ("Process failed to launch!")
+    const env = { ...process.env, ...apiEnv(block) }
+    delete env.ELECTRON_RUN_AS_NODE
     app = await electron.launch({
       executablePath: electronBin,
       args: [APP_DIR, `--user-data-dir=${userData}`],
       cwd: APP_DIR,
-      env: { ...process.env, ...apiEnv(block) },
+      env,
       timeout: 30_000
     })
     app.process().stdout.on('data', (d) => log.write(d))
@@ -152,11 +156,26 @@ const COMMANDS = {
     return f
   },
 
-  /** `action <name>`: a shortcut action, e.g. generateHint / toggleHintMode / stopSolutionStream */
+  /** `ss-toolbar [name]`: screenshot of the overlay toolbar window, plus its button texts */
+  async 'ss-toolbar'(name) {
+    need()
+    const toolbar = app.windows().find((w) => w.url().includes('toolbar'))
+    if (!toolbar) return 'NO TOOLBAR WINDOW'
+    const f = path.join(SHOT_DIR, (name || `toolbar-${Date.now()}`) + '.png')
+    await toolbar.screenshot({ path: f })
+    const buttons = await toolbar.evaluate(() =>
+      [...document.querySelectorAll('.overlay-toolbar-root > button')].map((b) =>
+        b.classList.contains('invisible') ? `(${b.innerText})` : b.innerText
+      )
+    )
+    return `${f}\n${buttons.join(' | ')}`
+  },
+
+  /** `action <name>`: a toolbar action, e.g. generateHint / toggleHintMode / stopSolutionStream */
   async action(name) {
     need()
     const ok = await page.evaluate((n) => window.api.triggerAction(n), name)
-    return ok ? `triggered ${name}` : `refused ${name} (not in clickableActions in shortcuts.ts)`
+    return ok ? `triggered ${name}` : `refused ${name} (not a toolbar action in src/main/actions.ts)`
   },
 
   /** `goto <hash>`: e.g. #/, #/settings?tab=voice */

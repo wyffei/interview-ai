@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { Mic, MicOff, PointerOff, UserRound, UsersRound } from 'lucide-react'
+import { Check, LoaderCircle, Mic, MicOff, PointerOff, UserRound, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -11,18 +11,12 @@ import {
 import { WindowResizeHandles } from '@/components/WindowResizeHandles'
 import { applyTheme } from '@/lib/theme'
 import { useAppStore } from '@/lib/store/app'
-import type { HintMode } from '@/lib/store/settings'
-import type { Speaker } from '../../../shared/conversation'
+import type { AppMode, HintMode } from '@/lib/store/settings'
 
 /** Mirrors `.overlay-toolbar` in main.css: `p-2` around the buttons */
 const BAR_PADDING = 8
 
-type ToolbarStatus = {
-  listening: boolean
-  hintMode: HintMode
-  phoneMode: boolean
-  speaker: Speaker
-}
+type ToolbarStatus = Awaited<ReturnType<Window['api']['getToolbarStatus']>>
 
 const HINT_MODES: { value: HintMode; label: string }[] = [
   { value: 'auto', label: '自动' },
@@ -40,15 +34,22 @@ export function OverlayToolbar() {
     listening: false,
     hintMode: 'auto',
     phoneMode: false,
-    speaker: 'other'
+    speaker: 'other',
+    capture: null
   })
   const barRef = useRef<HTMLDivElement>(null)
+  const measureRef = useRef<HTMLDivElement>(null)
   const syncAppState = useAppStore((state) => state.syncAppState)
   const ignoreMouse = useAppStore((state) => state.ignoreMouse)
-  const actions = status.phoneMode
-    ? TOOLBAR_ACTIONS
-    : TOOLBAR_ACTIONS.filter(({ action }) => !PHONE_MODE_ACTIONS.has(action))
-  const visibleCount = useVisibleActionCount(barRef, actions.length, [status, ignoreMouse])
+  // Main reports the page on screen; the toolbar is only shown on the two mode pages
+  const mode = useAppStore((state) => (state.inScreenshotPage ? 'screenshot' : 'conversation'))
+  const actionsOf = (of: AppMode) =>
+    status.phoneMode
+      ? TOOLBAR_ACTIONS[of]
+      : TOOLBAR_ACTIONS[of].filter(({ action }) => !PHONE_MODE_ACTIONS.has(action))
+  const actions = actionsOf(mode)
+  const visibleCount = useVisibleActionCount(barRef, actions.length, [status, ignoreMouse, mode])
+  useFitWidth(measureRef, [status.phoneMode, ignoreMouse])
 
   // Listening and the hint mode are owned by the main window; main relays them
   useEffect(() => {
@@ -102,8 +103,51 @@ export function OverlayToolbar() {
           these edges from ever showing a resize cursor. `nonActivating` because
           Windows eats this window's presses, see ToolbarButton below */}
       <WindowResizeHandles enabled axis="x" nonActivating />
+      {/* Both modes' rows, unseen, for the width the toolbar asks for */}
+      <div
+        ref={measureRef}
+        aria-hidden
+        className="pointer-events-none fixed top-0 left-0 invisible"
+      >
+        {MODES.map((of) => (
+          <div key={of} className="overlay-toolbar w-max">
+            {actionsOf(of).map((item) => (
+              <Button key={item.action} variant="ghost" size="sm" tabIndex={-1}>
+                <ButtonContent item={item} status={MEASURE_STATUS} ignoreMouse={ignoreMouse} />
+              </Button>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   )
+}
+
+const MODES: AppMode[] = ['conversation', 'screenshot']
+
+/**
+ * Measured with the screenshot button showing 「截图中…」, its widest state, so
+ * a capture never pushes the last button out of the bar
+ */
+const MEASURE_STATUS: ToolbarStatus = {
+  listening: false,
+  hintMode: 'auto',
+  phoneMode: false,
+  speaker: 'other',
+  capture: { action: 'takeScreenshot', phase: 'capturing' }
+}
+
+/**
+ * Ask main for the width of the wider mode's row, so both modes' toolbars (and
+ * the main window under them) are the same length and switching moves nothing
+ */
+function useFitWidth(measureRef: RefObject<HTMLDivElement | null>, deps: unknown[]): void {
+  useEffect(() => {
+    const rows = Array.from(measureRef.current?.children ?? [])
+    const width = Math.max(...rows.map((row) => row.getBoundingClientRect().width))
+    if (width > 0) void window.api.fitToolbarWidth(width)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measureRef, ...deps])
 }
 
 /** Icon with its text beside it; listening, hint mode, speaker and click-through show their state */
@@ -159,6 +203,20 @@ function ButtonContent({
       </>
     )
   }
+  // The screenshot button just clicked: the capture is under way, then done
+  if (status.capture?.action === action) {
+    return status.capture.phase === 'capturing' ? (
+      <>
+        <LoaderCircle className="size-3.5 animate-spin" />
+        截图中…
+      </>
+    ) : (
+      <span className="flex items-center gap-1 text-green-500">
+        <Check className="size-3.5" />
+        已截图
+      </span>
+    )
+  }
   if (action === 'ignoreOrEnableMouse' && ignoreMouse) {
     return (
       <>
@@ -197,11 +255,6 @@ function useVisibleActionCount(
       const box = bar.getBoundingClientRect()
       const right = box.right - BAR_PADDING
       const buttons = Array.from(bar.querySelectorAll<HTMLElement>(':scope > button'))
-      // Hidden buttons keep their room, so the last one's edge is what all of them need
-      const last = buttons.at(-1)
-      if (last) {
-        void window.api.fitToolbarWidth(last.getBoundingClientRect().right - box.left + BAR_PADDING)
-      }
       let fits = 0
       // A pixel of slack for fractional display scaling
       while (fits < buttons.length && buttons[fits].getBoundingClientRect().right <= right + 1) {

@@ -1,40 +1,42 @@
 import { PanelTop } from 'lucide-react'
-import ShortcutRenderer from '@/components/ShortcutRenderer'
-import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { TOOLBAR_ACTIONS } from '@/lib/toolbar-actions'
+import type { AppMode } from '@/lib/store/settings'
 import { HelpSection } from './components'
 
 export function OverlayToolbarHelp() {
   return (
-    <HelpSection Icon={PanelTop} title="悬浮工具条" description="用鼠标点击替代快捷键操作">
+    <HelpSection
+      Icon={PanelTop}
+      title="悬浮工具条"
+      description="应用的所有操作都在这里，没有快捷键"
+    >
       <p className="text-gray-700">
-        工具条悬浮在主窗口正上方，跟随主窗口移动、随主窗口一起隐藏，透明度也与主窗口保持一致，
-        并且和主窗口一样在共享屏幕时对方不可见。它主要用于两种场景：一是快捷键与面试软件冲突或注册失败时，
-        二是不希望通过键盘触发操作时。
+        工具条悬浮在主窗口正上方，宽度和主窗口一致，跟随主窗口移动，透明度也与主窗口保持一致，
+        并且和主窗口一样在共享屏幕时对方不可见。应用不注册任何快捷键，不会和面试软件的按键冲突，所有操作都用工具条上的按钮完成。
       </p>
-      <ToolbarActions />
+      <p className="text-sm font-medium text-gray-700">对话模式（出提示）</p>
+      <ToolbarActions mode="conversation" />
+      <p className="text-sm font-medium text-gray-700">截图模式：点最左侧的「截图模式」切过去</p>
+      <ToolbarActions mode="screenshot" />
       <ul className="space-y-1 text-sm text-gray-700 list-disc list-inside">
         <li>点击按钮不会抢走焦点，会议窗口不会失焦，光标也不会有明显的窗口切换动作。</li>
         <li>开启「鼠标穿透」后主窗口不再响应鼠标，但工具条仍然可以点击。</li>
         <li>
           在「设置 → 界面与隐私 →
-          悬停触发」中可以改为：鼠标在按钮上停留一段时间即触发，全程不产生点击。
+          工具条悬停触发」中可以改为：鼠标在按钮上停留一段时间即触发，全程不产生点击。
           停留过程中按钮下方会有进度条，中途移开即取消；触发后需移开再移回才会再次触发。
         </li>
         <li>
           拖动工具条的左右边缘可以调整它的宽度（高度固定）。边缘不会出现缩放光标，但照样可以拖。
-          按钮尺寸保持不变，宽度不够时会从右侧开始隐藏放不下的按钮。移动窗口没有做成按钮，请用快捷键。
+          按钮尺寸保持不变，宽度不够时会从右侧开始隐藏放不下的按钮。移动窗口请拖动主窗口的标题栏。
         </li>
-        <li>隐藏/显示主窗口没有做成按钮：窗口隐藏后工具条也会一起隐藏，只能用快捷键唤回。</li>
-        <li>如不需要，可在「设置 → 界面与隐私 → 悬浮工具条」中关闭。</li>
       </ul>
     </HelpSection>
   )
 }
 
-function ToolbarActions() {
-  const { shortcuts } = useShortcutsStore()
-  const actions = TOOLBAR_ACTIONS
+function ToolbarActions({ mode }: { mode: AppMode }) {
+  const actions = TOOLBAR_ACTIONS[mode]
 
   return (
     <div className="space-y-2">
@@ -54,9 +56,6 @@ function ToolbarActions() {
           >
             <Icon className="h-4 w-4 shrink-0" />
             <span className="text-sm">{label}</span>
-            {shortcuts[action] && (
-              <ShortcutRenderer shortcut={shortcuts[action].key} className="ml-auto select-none" />
-            )}
           </div>
         ))}
       </div>

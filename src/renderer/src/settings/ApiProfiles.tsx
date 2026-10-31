@@ -29,6 +29,7 @@ export function ApiProfiles({ children }: { children: ReactNode }) {
     apiProfiles,
     activeProfileId,
     conversationProfileId,
+    screenshotProfileId,
     setActiveProfile,
     addProfile,
     removeProfile
@@ -45,7 +46,10 @@ export function ApiProfiles({ children }: { children: ReactNode }) {
   const successor = apiProfiles.filter((p) => p.id !== activeProfileId)[
     Math.min(activeIndex, apiProfiles.length - 2)
   ]
-  const inUse = conversationProfileId === activeProfileId
+  const usedBy = [
+    conversationProfileId === activeProfileId && '出提示',
+    screenshotProfileId === activeProfileId && '截图模式'
+  ].filter(Boolean)
 
   const handleAdd = () => {
     const trimmed = newName.trim()
@@ -70,7 +74,8 @@ export function ApiProfiles({ children }: { children: ReactNode }) {
             onClick={() => setActiveProfile(profile.id)}
           >
             {profile.name.trim() || UNNAMED}
-            {profile.id === conversationProfileId && <ModeTag>使用中</ModeTag>}
+            {profile.id === conversationProfileId && <ModeTag>出提示</ModeTag>}
+            {profile.id === screenshotProfileId && <ModeTag>截图</ModeTag>}
           </button>
         ))}
         <button
@@ -108,7 +113,7 @@ export function ApiProfiles({ children }: { children: ReactNode }) {
             <DialogTitle>新增配置</DialogTitle>
             <DialogDescription>
               每个配置单独保存 API
-              地址、密钥、请求头、模型和思考开关；出提示时用选中的那个，也可用快捷键切换
+              地址、密钥、请求头、模型和思考开关；出提示和截图模式各自在设置里选用哪一个
             </DialogDescription>
           </DialogHeader>
           <Input
@@ -145,9 +150,9 @@ export function ApiProfiles({ children }: { children: ReactNode }) {
             <DialogTitle>删除配置</DialogTitle>
             <DialogDescription>
               确定删除配置「{activeName}」吗？其中的 API Key 等设置将一并删除，且无法恢复。
-              {inUse &&
+              {usedBy.length > 0 &&
                 successor &&
-                `出提示正在使用它，删除后改用「${successor.name.trim() || UNNAMED}」。`}
+                `${usedBy.join('和')}正在使用它，删除后改用「${successor.name.trim() || UNNAMED}」。`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -174,35 +179,57 @@ function ModeTag({ children }: { children: ReactNode }) {
   return <span className="ml-1.5 rounded bg-black/15 px-1 text-[10px] leading-4">{children}</span>
 }
 
-/** Whether hints are asked for with the profile being edited */
+/** Whether hints, and 截图模式, are sent with the profile being edited */
 function ProfileUsageField() {
-  const { activeProfileId, conversationProfileId, setConversationProfile } = useSettingsStore()
+  const {
+    activeProfileId,
+    conversationProfileId,
+    screenshotProfileId,
+    setConversationProfile,
+    setScreenshotProfile
+  } = useSettingsStore()
   const profile = useSettingsStore((s) => s.apiProfiles.find((p) => p.id === activeProfileId))
   if (!profile) return null
 
-  const inUse = conversationProfileId === profile.id
-  // One profile is always in use, so the current one is switched off by picking another
+  const uses = [
+    {
+      inUse: conversationProfileId === profile.id,
+      onClick: () => setConversationProfile(profile.id),
+      idle: '用于出提示',
+      active: '出提示使用中'
+    },
+    {
+      inUse: screenshotProfileId === profile.id,
+      onClick: () => setScreenshotProfile(profile.id),
+      idle: '用于截图',
+      active: '截图使用中'
+    }
+  ]
+  // One profile is always in use per mode, so the current one is switched off by picking another
   return (
     <div className="flex items-center justify-between gap-4">
       <label className="text-sm font-medium">
         用于
         <span className="ml-2 text-xs font-light">
-          点击让出提示改用这个配置；适合关闭思考的快模型
+          点击让出提示或截图模式改用这个配置；出提示适合关闭思考的快模型，截图要能识图的模型
         </span>
       </label>
       <div className="flex w-60 shrink-0 gap-2">
-        <button
-          disabled={inUse}
-          className={cn(
-            'flex-1 rounded-md border px-2 py-1.5 text-xs transition-colors',
-            inUse
-              ? 'bg-blue-600 border-blue-600 text-white'
-              : 'bg-white border-gray-300 hover:border-blue-400 cursor-pointer'
-          )}
-          onClick={() => setConversationProfile(profile.id)}
-        >
-          {inUse ? '出提示使用中' : '用于出提示'}
-        </button>
+        {uses.map(({ inUse, onClick, idle, active }) => (
+          <button
+            key={idle}
+            disabled={inUse}
+            className={cn(
+              'flex-1 rounded-md border px-2 py-1.5 text-xs transition-colors',
+              inUse
+                ? 'bg-blue-600 border-blue-600 text-white'
+                : 'bg-white border-gray-300 hover:border-blue-400 cursor-pointer'
+            )}
+            onClick={onClick}
+          >
+            {inUse ? active : idle}
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -219,7 +246,7 @@ function ProfileNameField() {
     <div className="flex items-center justify-between">
       <label className="text-sm font-medium">
         配置名称
-        <span className="ml-2 text-xs font-light">用快捷键切换配置时会提示这个名称</span>
+        <span className="ml-2 text-xs font-light">选择配置时显示这个名称</span>
       </label>
       <input
         value={profile.name}
@@ -262,7 +289,8 @@ function SaveStatus() {
     profile?.apiKey,
     profile?.apiHeaders,
     profile?.model,
-    profile?.disableThinking
+    profile?.disableThinking,
+    profile?.enableThinking
   ])
   const lastSnapshot = useRef(snapshot)
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')

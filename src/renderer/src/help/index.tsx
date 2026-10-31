@@ -10,17 +10,15 @@ import {
   Info
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import ShortcutRenderer from '@/components/ShortcutRenderer'
-import { platformAlt } from '@/lib/utils/env'
-import { HOME_PATH } from '@/lib/use-main-page'
+import { useHomePath } from '@/lib/use-main-page'
 import { HelpSection } from './components'
-import { Shortcuts } from './Shortcuts'
 import { OverlayToolbarHelp } from './OverlayToolbar'
 import { FAQ } from './FAQ'
 import { UpdateNotice } from './UpdateNotice'
 
 export default function HelpPage() {
   const [appVersion, setAppVersion] = useState('')
+  const homePath = useHomePath()
 
   useEffect(() => {
     window.api.getAppVersion().then(setAppVersion)
@@ -32,7 +30,7 @@ export default function HelpPage() {
       <div id="app-header" className="flex items-center">
         <div className="actions">
           <Button variant="ghost" asChild size="icon" className="w-12 mr-2 rounded-none">
-            <Link to={HOME_PATH}>
+            <Link to={homePath}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -86,8 +84,9 @@ export default function HelpPage() {
           <div className="border border-gray-400 rounded-lg p-4">
             <h3 className="font-semibold mb-2">1. 填好 AI 和语音的 Key</h3>
             <p className="text-sm text-gray-700">
-              在「设置 → AI 模型」填写 AI 平台的 API Key，建议打开「关闭思考」；在「设置 →
-              语音」填写百炼平台 API Key，用来识别对方说话。
+              在「设置 → AI 模型」填写 AI 平台的 API
+              Key，出提示的配置建议把「思考」设为「关闭思考」；在「设置 → 语音」填写百炼平台 API
+              Key，用来识别对方说话。
             </p>
           </div>
           <div className="border border-gray-400 rounded-lg p-4">
@@ -100,17 +99,11 @@ export default function HelpPage() {
           <div className="border border-gray-400 rounded-lg p-4">
             <h3 className="font-semibold mb-2">3. 开始监听</h3>
             <p className="text-sm text-gray-700">
-              按
-              <ShortcutRenderer shortcut={`${platformAlt}+T`} className="text-xs mx-1" />
-              开始监听。对方说完一句话，右侧就会给出回答提示；按
-              <ShortcutRenderer shortcut={`${platformAlt}+G`} className="text-xs mx-1" />
-              可以立即出提示。详见下方常见问题。
+              点主窗口上方工具条的「开始监听」。对方说完一句话，右侧就会给出回答提示；点「出提示」
+              可以立即出提示。做笔试题时点工具条最左边的「截图模式」。详见下方常见问题。
             </p>
           </div>
         </HelpSection>
-
-        {/* Keyboard Shortcuts */}
-        <Shortcuts />
 
         {/* Overlay Toolbar */}
         <OverlayToolbarHelp />

@@ -10,17 +10,25 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { useAppStore } from '@/lib/store/app'
-import { useSettingsStore } from '@/lib/store/settings'
+import { scenesOf, useSettingsStore, type AppMode } from '@/lib/store/settings'
+import { MODE_NAMES } from '@/lib/use-main-page'
 
-export function AppHeader() {
+/** The settings group each mode page's settings button opens */
+const SETTINGS_TAB: Record<AppMode, string> = { conversation: 'hints', screenshot: 'screenshot' }
+
+export function AppHeader({ mode = 'conversation' }: { mode?: AppMode }) {
   const navigate = useNavigate()
   const { ignoreMouse, update } = useAppStore()
   // A shortcut or a toolbar hover can switch either unnoticed, so both stay in view
-  const model = useSettingsStore(
-    (state) => state.apiProfiles.find((p) => p.id === state.conversationProfileId)?.model
+  const model = useSettingsStore((state) => {
+    const id = mode === 'screenshot' ? state.screenshotProfileId : state.conversationProfileId
+    return state.apiProfiles.find((p) => p.id === id)?.model
+  })
+  const allScenes = useSettingsStore((state) => state.scenes)
+  const scenes = scenesOf(allScenes, mode)
+  const sceneId = useSettingsStore((state) =>
+    mode === 'screenshot' ? state.screenshotSceneId : state.conversationSceneId
   )
-  const scenes = useSettingsStore((state) => state.scenes)
-  const sceneId = useSettingsStore((state) => state.conversationSceneId)
   const setActiveScene = useSettingsStore((state) => state.setActiveScene)
   const [appVersion, setAppVersion] = useState('')
 
@@ -41,7 +49,9 @@ export function AppHeader() {
         className="flex min-w-0 items-baseline justify-center gap-1.5 px-2"
         style={{ flex: '1 8 auto', minWidth: 0 }}
       >
-        <span className="truncate">语音面试助手</span>
+        <span className="truncate">
+          语音面试助手{mode === 'screenshot' && ` · ${MODE_NAMES.screenshot}`}
+        </span>
         {appVersion && <span className="shrink-0 text-[10px] opacity-60">v{appVersion}</span>}
         {update && (
           // Details and the download are on the help page
@@ -83,7 +93,7 @@ export function AppHeader() {
         <Button
           variant="ghost"
           className="size-8 cursor-pointer hover:opacity-50"
-          onClick={() => navigate('/settings?tab=hints')}
+          onClick={() => navigate(`/settings?tab=${SETTINGS_TAB[mode]}`)}
         >
           <SettingsIcon />
         </Button>

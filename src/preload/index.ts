@@ -9,6 +9,9 @@ import type { ConversationSnapshot, HintCard, Speaker, Utterance } from '../shar
 import type { KnowledgeDoc, KnowledgeImportResult, KnowledgePatch } from '../shared/knowledge'
 import type { Briefing, BriefingChunkKind, BriefingRoute } from '../shared/briefing'
 import type { AvailableUpdate } from '../shared/update'
+import type { RegionPickerData } from '../main/region-picker'
+import type { CaptureRegion, RegionRect } from '../shared/capture-region'
+import type { ScreenshotSummary } from '../shared/screenshot'
 
 // Custom APIs for renderer
 const api = {
@@ -56,16 +59,7 @@ const api = {
     ipcRenderer.removeAllListeners('sync-app-state')
   },
 
-  // Init shortcuts
-  initShortcuts: (shortcuts: Record<string, { action: string; key: string }>) =>
-    ipcRenderer.invoke('initShortcuts', shortcuts),
-  // Get shortcuts
-  getShortcuts: () => ipcRenderer.invoke('getShortcuts'),
-  // Update shortcuts
-  updateShortcuts: (shortcuts: { action: string; key: string }[]) =>
-    ipcRenderer.invoke('updateShortcuts', shortcuts),
-
-  // Trigger the small set of user-facing actions exposed by the overlay toolbar.
+  // Run one of the overlay toolbar's buttons
   triggerAction: (
     action:
       | 'stopSolutionStream'
@@ -74,16 +68,15 @@ const api = {
       | 'decreaseOpacity'
       | 'pageUp'
       | 'pageDown'
-      | 'moveMainWindowUp'
-      | 'moveMainWindowDown'
-      | 'moveMainWindowLeft'
-      | 'moveMainWindowRight'
       | 'toggleTranscription'
-      | 'clearTranscription'
       | 'cycleScene'
       | 'generateHint'
       | 'toggleHintMode'
       | 'toggleSpeaker'
+      | 'switchMode'
+      | 'takeScreenshot'
+      | 'appendScreenshot'
+      | 'snipScreenshot'
   ) => ipcRenderer.invoke('triggerAction', action),
   setToolbarVisible: (visible: boolean) => ipcRenderer.invoke('setToolbarVisible', visible),
   // The width the toolbar's buttons need; main sizes the window to it until the user drags it
@@ -114,7 +107,7 @@ const api = {
     ipcRenderer.removeAllListeners('sync-toolbar-status')
   },
 
-  // Listen for window opacity adjustments triggered by shortcuts
+  // Listen for window opacity adjustments from the toolbar
   onAdjustOpacity: (callback: (delta: number) => void) => {
     ipcRenderer.on('adjust-opacity', (_event, delta) => {
       callback(delta)
@@ -124,15 +117,7 @@ const api = {
     ipcRenderer.removeAllListeners('adjust-opacity')
   },
 
-  // Shortcut asked to step through the saved AI profiles (+1 / -1)
-  onSwitchApiProfile: (callback: (direction: number) => void) => {
-    ipcRenderer.on('switch-api-profile', (_event, direction: number) => callback(direction))
-  },
-  removeSwitchApiProfileListener: () => {
-    ipcRenderer.removeAllListeners('switch-api-profile')
-  },
-
-  // Shortcut or toolbar asked to step to the next prompt scene
+  // The toolbar asked to step to the next prompt scene
   onCycleScene: (callback: () => void) => {
     ipcRenderer.on('cycle-scene', () => callback())
   },
@@ -140,9 +125,11 @@ const api = {
     ipcRenderer.removeAllListeners('cycle-scene')
   },
 
-  // The active model refused 「关闭思考」, so its requests now go without it
-  onThinkingUnsupported: (callback: (model: string) => void) => {
-    ipcRenderer.on('thinking-unsupported', (_event, model: string) => callback(model))
+  // The active model refused 「关闭思考」 / 「开启思考」, so its requests now go without it
+  onThinkingUnsupported: (callback: (model: string, mode: 'on' | 'off') => void) => {
+    ipcRenderer.on('thinking-unsupported', (_event, model: string, mode: 'on' | 'off') =>
+      callback(model, mode)
+    )
   },
   removeThinkingUnsupportedListener: () => {
     ipcRenderer.removeAllListeners('thinking-unsupported')
@@ -165,6 +152,78 @@ const api = {
   removeScrollPageDownListener: () => {
     ipcRenderer.removeAllListeners('scroll-page-down')
   },
+
+  // The toolbar asked for the other mode's page
+  onSwitchMode: (callback: () => void) => {
+    ipcRenderer.on('switch-mode', () => callback())
+  },
+  removeSwitchModeListener: () => {
+    ipcRenderer.removeAllListeners('switch-mode')
+  },
+
+  // 截图模式 (main screenshot.ts): the answer streams in as these events. They are
+  // followed for the whole life of the main window, not only while its page is up
+  stopScreenshotAnswer: () => ipcRenderer.invoke('screenshot:stop') as Promise<boolean>,
+  // False when there was nothing to follow up on (or no key); no event will follow then
+  sendFollowUpQuestion: (question: string) =>
+    ipcRenderer.invoke('screenshot:follow-up', question) as Promise<boolean>,
+  onScreenshotEvents: (handlers: {
+    capturing: (capturing: boolean) => void
+    /** A new question, numbered `id`; the one on screen moves to the history */
+    clear: (id: number) => void
+    /** A question's record, made after its answer (only when saving is on) */
+    summary: (id: number, summary: ScreenshotSummary) => void
+    screenshots: (screenshots: string[], total: number) => void
+    chunk: (chunk: string) => void
+    reasoningChunk: (chunk: string) => void
+    roundStart: () => void
+    loading: (loading: boolean) => void
+    complete: () => void
+    stopped: () => void
+    error: (message: string) => void
+  }) => {
+    const listeners: [string, Parameters<typeof ipcRenderer.on>[1]][] = [
+      [
+        'screenshot-capturing',
+        (_event: unknown, capturing: boolean) => handlers.capturing(capturing)
+      ],
+      ['solution-clear', (_event: unknown, id: number) => handlers.clear(id)],
+      [
+        'screenshot-summary',
+        (_event: unknown, id: number, summary: ScreenshotSummary) => handlers.summary(id, summary)
+      ],
+      [
+        'screenshots-updated',
+        (_event: unknown, screenshots: string[], total: number) =>
+          handlers.screenshots(screenshots, total)
+      ],
+      ['solution-chunk', (_event: unknown, chunk: string) => handlers.chunk(chunk)],
+      ['reasoning-chunk', (_event: unknown, chunk: string) => handlers.reasoningChunk(chunk)],
+      ['reasoning-round-start', () => handlers.roundStart()],
+      ['ai-loading-start', () => handlers.loading(true)],
+      ['ai-loading-end', () => handlers.loading(false)],
+      ['solution-complete', () => handlers.complete()],
+      ['solution-stopped', () => handlers.stopped()],
+      ['solution-error', (_event: unknown, message: string) => handlers.error(message)]
+    ]
+    for (const [channel, listener] of listeners) ipcRenderer.on(channel, listener)
+    return () => {
+      for (const [channel, listener] of listeners) ipcRenderer.removeListener(channel, listener)
+    }
+  },
+  // Cover every screen and let the user drag out the capture region; null if cancelled
+  pickCaptureRegion: () => ipcRenderer.invoke('pickCaptureRegion') as Promise<CaptureRegion | null>,
+  // A new capture region was picked (settings or toolbar); the store persists it
+  onCaptureRegionPicked: (callback: (region: CaptureRegion) => void) => {
+    const listener = (_event: unknown, region: CaptureRegion) => callback(region)
+    ipcRenderer.on('capture-region-picked', listener)
+    return () => void ipcRenderer.removeListener('capture-region-picked', listener)
+  },
+  // The picker windows (main region-picker.ts)
+  getRegionPickerData: () =>
+    ipcRenderer.invoke('getRegionPickerData') as Promise<RegionPickerData | null>,
+  regionPickerReady: () => ipcRenderer.send('region-picker-ready'),
+  finishRegionPicker: (rect: RegionRect | null) => ipcRenderer.send('finish-region-picker', rect),
 
   // Select the directory conversations are saved to
   selectConversationDir: () =>
@@ -212,7 +271,7 @@ const api = {
   onConversationNotice: (callback: (message: string) => void) => {
     ipcRenderer.on('conversation-notice', (_event, message: string) => callback(message))
   },
-  // Shortcut or toolbar asked to flip between automatic and manual hints
+  // The toolbar asked to flip between automatic and manual hints
   onToggleHintMode: (callback: () => void) => {
     ipcRenderer.on('toggle-hint-mode', () => callback())
   },
